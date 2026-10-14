@@ -28,7 +28,7 @@ export const REMINDER_OPTIONS = [
 
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('en-GB', {
+  return getLocalDate(dateStr).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -36,9 +36,17 @@ export function formatDate(dateStr: string | null): string {
 }
 
 // Convert a date string into a local date without timezone issues
-function getLocalDate(dateStr: string): Date {
+export function getLocalDate(dateStr: string): Date {
   const [year, month, day] = dateStr.split('-').map(Number)
   return new Date(year, month - 1, day)
+}
+
+// Convert a Date into a local YYYY-MM-DD key (never via UTC, so no off-by-one days)
+export function toDateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 // Get today's date at midnight

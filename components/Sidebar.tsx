@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   CheckSquare,
+  Calendar,
   FolderOpen,
   Settings,
   LogOut,
@@ -20,6 +21,7 @@ import {
 const navLinks = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/items', label: 'Items', icon: CheckSquare },
+  { href: '/calendar', label: 'Calendar', icon: Calendar },
   { href: '/categories', label: 'Categories', icon: FolderOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]

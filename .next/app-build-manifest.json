@@ -1,20 +1,15 @@
 {
   "pages": {
+    "/api/auth/me/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/auth/me/route.js"
+    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
-    ],
-    "/login/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/login/page.js"
-    ],
-    "/api/auth/me/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/auth/me/route.js"
     ],
     "/(app)/layout": [
       "static/chunks/webpack.js",
@@ -31,30 +26,25 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/items/route.js"
     ],
-    "/api/auth/logout/route": [
+    "/(app)/calendar/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/auth/logout/route.js"
+      "static/chunks/app/(app)/calendar/page.js"
     ],
-    "/api/auth/login/route": [
+    "/(app)/items/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/auth/login/route.js"
-    ],
-    "/(app)/categories/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(app)/categories/page.js"
+      "static/chunks/app/(app)/items/page.js"
     ],
     "/api/categories/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/categories/route.js"
     ],
-    "/(app)/items/page": [
+    "/(app)/categories/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(app)/items/page.js"
+      "static/chunks/app/(app)/categories/page.js"
     ],
     "/(app)/items/new/page": [
       "static/chunks/webpack.js",

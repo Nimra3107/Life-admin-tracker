@@ -1,12 +1,10 @@
 {
   "/api/auth/me/route": "app/api/auth/me/route.js",
-  "/api/items/route": "app/api/items/route.js",
-  "/api/auth/logout/route": "app/api/auth/logout/route.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js",
   "/api/categories/route": "app/api/categories/route.js",
-  "/login/page": "app/login/page.js",
+  "/api/items/route": "app/api/items/route.js",
   "/(app)/page": "app/(app)/page.js",
-  "/(app)/categories/page": "app/(app)/categories/page.js",
+  "/(app)/calendar/page": "app/(app)/calendar/page.js",
   "/(app)/items/page": "app/(app)/items/page.js",
+  "/(app)/categories/page": "app/(app)/categories/page.js",
   "/(app)/items/new/page": "app/(app)/items/new/page.js"
 }

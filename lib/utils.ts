@@ -1,4 +1,4 @@
-import { type Priority, type Status } from './types'
+import { type NotificationPreference, type Priority, type ReminderStatus, type Status } from './types'
 
 export const PRIORITY_ORDER: Record<Priority, number> = {
   Urgent: 4,
@@ -26,6 +26,82 @@ export const REMINDER_OPTIONS = [
   { value: 1, label: '1 day before' },
 ]
 
+/** Reminders measured from the due time; only usable when a due time is set. */
+export const TIME_REMINDER_OPTIONS = [
+  { value: 60, label: '1 hour before' },
+  { value: 30, label: '30 minutes before' },
+  { value: 15, label: '15 minutes before' },
+]
+
+export const NOTIFICATION_PREFERENCE_OPTIONS: { value: NotificationPreference; label: string }[] = [
+  { value: 'dashboard', label: 'Dashboard Only' },
+  { value: 'push', label: 'Firebase Push' },
+  { value: 'both', label: 'Both Dashboard and Push' },
+]
+
+export const REMINDER_STATUS_COLORS: Record<ReminderStatus, string> = {
+  pending: 'bg-blue-100 text-blue-800 border-blue-200',
+  processing: 'bg-slate-100 text-slate-600 border-slate-200',
+  sent: 'bg-teal-100 text-teal-800 border-teal-200',
+  failed: 'bg-red-100 text-red-800 border-red-200',
+  canceled: 'bg-slate-100 text-slate-500 border-slate-200',
+}
+
+export const REMINDER_STATUS_LABELS: Record<ReminderStatus, string> = {
+  pending: 'Scheduled',
+  processing: 'Sending',
+  sent: 'Sent',
+  failed: 'Failed',
+  canceled: 'Canceled',
+}
+
+export const CHANNEL_LABELS: Record<NotificationPreference, string> = {
+  dashboard: 'Dashboard',
+  push: 'Push',
+  both: 'Push + Dashboard',
+}
+
+/** Turn a reminder kind like "7d" / "60m" into "7 days before" / "1 hour before". */
+export function reminderKindLabel(kind: string): string {
+  const match = /^(\d+)([dm])$/.exec(kind)
+  if (!match) return kind
+  const value = Number(match[1])
+  if (match[2] === 'd') return `${value} day${value === 1 ? '' : 's'} before`
+  if (value >= 60 && value % 60 === 0) {
+    const hours = value / 60
+    return `${hours} hour${hours === 1 ? '' : 's'} before`
+  }
+  return `${value} minute${value === 1 ? '' : 's'} before`
+}
+
+/** Format a Postgres time value ("14:30:00") as "14:30". */
+export function formatTime(timeStr: string | null): string {
+  if (!timeStr) return '—'
+  return timeStr.slice(0, 5)
+}
+
+/** Format a UTC timestamp as wall-clock date + time in the given IANA zone. */
+export function formatDateTimeInTimeZone(iso: string, timeZone: string): string {
+  try {
+    return new Date(iso).toLocaleString('en-GB', {
+      timeZone,
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return new Date(iso).toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+}
+
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—'
   return getLocalDate(dateStr).toLocaleDateString('en-GB', {
@@ -33,6 +109,17 @@ export function formatDate(dateStr: string | null): string {
     month: 'short',
     year: 'numeric',
   })
+}
+
+/**
+ * Due date plus optional wall-clock due time ("15 Oct 2026" or "15 Oct 2026, 14:30").
+ * due_date/due_time are stored as the user's local wall-clock values, so they are
+ * shown as-is; missing dates render as "—" and missing times are omitted.
+ */
+export function formatDateTime(dateStr: string | null, timeStr: string | null): string {
+  const date = formatDate(dateStr)
+  if (!dateStr || !timeStr) return date
+  return `${date}, ${formatTime(timeStr)}`
 }
 
 // Convert a date string into a local date without timezone issues

@@ -81,8 +81,9 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // Only page navigations pass through here. The /api routes are excluded: they
   // do their own bearer-token auth and must answer with JSON 401s (a redirect
-  // would make client API calls read an HTML login page instead).
+  // would make client API calls read an HTML login page instead). The FCM
+  // service worker must be fetchable without a session as well.
   matcher: [
-    '/((?!api(?:$|/)|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api(?:$|/)|_next/static|_next/image|favicon.ico|firebase-messaging-sw\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

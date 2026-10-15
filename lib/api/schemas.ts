@@ -1,15 +1,36 @@
 import { type NextRequest } from 'next/server'
 import { ApiError } from '@/lib/supabase/api'
+import { isValidTimeZone } from '@/lib/time'
 import type { ItemInput } from './core'
-import type { Priority, Status } from '@/lib/types'
+import type { NotificationPreference, Priority, Status } from '@/lib/types'
 
 const PRIORITIES: readonly Priority[] = ['Low', 'Medium', 'High', 'Urgent']
 const STATUSES: readonly Status[] = ['Pending', 'Completed', 'Renewed']
+const NOTIFICATION_PREFERENCES: readonly NotificationPreference[] = ['dashboard', 'push', 'both']
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
 function bad(message: string): never {
   throw new ApiError(422, message)
+}
+
+/**
+ * One entry of a reminder offset list. Plain JSON numbers pass through; numeric
+ * strings ("60", " 30 ") are converted to numbers so clients that serialize
+ * inputs as text still produce values for Supabase's integer[] columns.
+ * Decimals, negatives, out-of-range, empty and non-numeric values are rejected.
+ */
+function parseWholeNumberInRange(value: unknown, min: number, max: number, message: string): number {
+  let parsed = value
+  if (typeof parsed === 'string') {
+    const trimmed = parsed.trim()
+    parsed = trimmed !== '' ? Number(trimmed) : NaN
+  }
+  if (typeof parsed !== 'number' || !Number.isInteger(parsed) || parsed < min || parsed > max) {
+    bad(message)
+  }
+  return parsed
 }
 
 /** Parse the request body as a JSON object. */
@@ -62,6 +83,14 @@ export function parseItemInput(body: Record<string, unknown>): ItemInput {
     bad('due_date must be a valid date (YYYY-MM-DD).')
   }
 
+  let dueTime: string | null = null
+  if (typeof body.due_time === 'string' && body.due_time) {
+    if (!TIME_RE.test(body.due_time)) bad('due_time must be a valid time (HH:MM).')
+    dueTime = body.due_time
+  } else if (body.due_time != null) {
+    bad('due_time must be a valid time (HH:MM).')
+  }
+
   let priority: Priority = 'Medium'
   if (body.priority !== undefined) {
     if (!PRIORITIES.includes(body.priority as Priority)) bad('priority is not a valid value.')
@@ -77,15 +106,68 @@ export function parseItemInput(body: Record<string, unknown>): ItemInput {
   let reminderDays: number[] = []
   if (body.reminder_days !== undefined) {
     if (!Array.isArray(body.reminder_days)) bad('reminder_days must be a list of numbers.')
-    reminderDays = body.reminder_days.map((day) => {
-      if (typeof day !== 'number' || !Number.isInteger(day) || day < 0 || day > 365) {
-        bad('Each reminder day must be a whole number between 0 and 365.')
-      }
-      return day
-    })
+    reminderDays = body.reminder_days.map((day) =>
+      parseWholeNumberInRange(day, 0, 365, 'Each reminder day must be a whole number between 0 and 365.')
+    )
   }
 
-  return { title, description, category_id: categoryId, due_date: dueDate, priority, status, reminder_days: reminderDays }
+  let reminderMinutes: number[] = []
+  if (body.reminder_minutes !== undefined) {
+    if (!Array.isArray(body.reminder_minutes)) bad('reminder_minutes must be a list of numbers.')
+    reminderMinutes = body.reminder_minutes.map((minutes) =>
+      parseWholeNumberInRange(
+        minutes,
+        0,
+        1440,
+        'Each time-based reminder must be a whole number of minutes between 0 and 1440.'
+      )
+    )
+  }
+
+  let notificationPreference: NotificationPreference = 'dashboard'
+  if (body.notification_preference !== undefined) {
+    if (!NOTIFICATION_PREFERENCES.includes(body.notification_preference as NotificationPreference)) {
+      bad('notification_preference is not a valid value.')
+    }
+    notificationPreference = body.notification_preference as NotificationPreference
+  }
+
+  // Optional: the browser reports its IANA zone so reminders are scheduled in
+  // the user's local time. Absent or invalid values are ignored.
+  let timezone: string | undefined
+  if (typeof body.timezone === 'string' && body.timezone && isValidTimeZone(body.timezone)) {
+    timezone = body.timezone
+  }
+
+  return {
+    title,
+    description,
+    category_id: categoryId,
+    due_date: dueDate,
+    due_time: dueTime,
+    priority,
+    status,
+    reminder_days: reminderDays,
+    reminder_minutes: reminderMinutes,
+    notification_preference: notificationPreference,
+    timezone,
+  }
+}
+
+/** Body for the time-zone settings endpoint. */
+export function parseTimezone(body: Record<string, unknown>): string {
+  const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : ''
+  if (!timezone || !isValidTimeZone(timezone)) {
+    bad('timezone must be a valid IANA time zone (e.g. Asia/Karachi).')
+  }
+  return timezone
+}
+
+/** Body for registering an FCM device token. */
+export function parseFcmToken(body: Record<string, unknown>): string {
+  const token = typeof body.token === 'string' ? body.token.trim() : ''
+  if (!token || token.length > 4096) bad('token must be a non-empty FCM registration token.')
+  return token
 }
 
 export function parseCategoryName(body: Record<string, unknown>): string {

@@ -146,6 +146,15 @@ async function restCall(
   const body = await readBody(res)
   if (res.status >= 400) {
     const data = body as { message?: string; code?: string } | null
+    // PostgREST reports an unknown table as 404/42P01; surface it as an
+    // actionable setup error instead of a bare "404".
+    if (data?.code === 'PGRST205' || data?.code === '42P01') {
+      throw new ApiError(
+        503,
+        `Database table '${table}' is missing. Run the SQL files in supabase/migrations/ in the Supabase SQL editor, then try again.`,
+        data.code
+      )
+    }
     const message = data?.message || `Supabase request failed (${res.status})`
     if (opts.single && res.status === 406) {
       // vnd.pgrst.object+json reports no row (or several) as 406 PGRST116.
@@ -274,5 +283,180 @@ export async function deleteCategory(token: string, userId: string, categoryId: 
   }
   await restCall('DELETE', CATEGORIES_TABLE, token, {
     params: { id: `eq.${categoryId}`, user_id: `eq.${userId}` },
+  })
+}
+
+// ---- reminders, settings and device tokens --------------------------------------
+
+export const REMINDERS_TABLE = 'life_admin_reminders'
+export const SETTINGS_TABLE = 'life_admin_user_settings'
+export const DEVICE_TOKENS_TABLE = 'life_admin_device_tokens'
+
+/** Same join used when reminders are listed for the dashboard card. */
+export const REMINDER_ITEM_SELECT =
+  '*,item:life_admin_items!life_admin_reminders_item_id_fkey(id,title,due_date,due_time,status,priority)'
+
+/**
+ * The cron route runs without a signed-in user, so it uses the service-role key
+ * (server env only) which bypasses RLS. Never use this for caller-driven routes.
+ */
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+export function hasServiceRoleKey(): boolean {
+  return Boolean(SUPABASE_SERVICE_KEY)
+}
+
+async function serviceRestCall(
+  method: string,
+  table: string,
+  opts: { params?: Record<string, string>; json?: unknown; single?: boolean; prefer?: string } = {}
+): Promise<unknown> {
+  if (!hasServiceRoleKey()) {
+    throw new ApiError(500, 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server.')
+  }
+  return restCall(method, table, SUPABASE_SERVICE_KEY, opts)
+}
+
+/** The caller's stored IANA time zone, or null when nothing is stored yet. */
+export async function getUserTimezone(token: string, userId: string): Promise<string | null> {
+  const rows = (await restCall('GET', SETTINGS_TABLE, token, {
+    params: { select: 'timezone', user_id: `eq.${userId}` },
+  })) as { timezone: string }[]
+  return rows[0]?.timezone ?? null
+}
+
+export async function upsertUserTimezone(token: string, userId: string, timezone: string): Promise<void> {
+  await restCall('POST', SETTINGS_TABLE, token, {
+    params: { on_conflict: 'user_id' },
+    json: { user_id: userId, timezone, updated_at: new Date().toISOString() },
+    prefer: 'resolution=merge-duplicates',
+  })
+}
+
+/** Register (or re-activate) an FCM token for the signed-in user. */
+export async function upsertDeviceToken(token: string, userId: string, fcmToken: string): Promise<void> {
+  await restCall('POST', DEVICE_TOKENS_TABLE, token, {
+    params: { on_conflict: 'token' },
+    json: {
+      user_id: userId,
+      token: fcmToken,
+      platform: 'web',
+      last_seen_at: new Date().toISOString(),
+      disabled_at: null,
+    },
+    prefer: 'resolution=merge-duplicates',
+  })
+}
+
+export async function listActiveDeviceTokens(userId: string): Promise<string[]> {
+  const rows = (await serviceRestCall('GET', DEVICE_TOKENS_TABLE, {
+    params: { select: 'token', user_id: `eq.${userId}`, disabled_at: 'is.null' },
+  })) as { token: string }[]
+  return rows.map((row) => row.token)
+}
+
+export async function disableDeviceToken(fcmToken: string): Promise<void> {
+  await serviceRestCall('PATCH', DEVICE_TOKENS_TABLE, {
+    params: { token: `eq.${fcmToken}` },
+    json: { disabled_at: new Date().toISOString() },
+  })
+}
+
+export async function listItemsPendingWithDueDate(token: string, userId: string): Promise<unknown[]> {
+  return (await restCall('GET', ITEMS_TABLE, token, {
+    params: { select: '*', user_id: `eq.${userId}`, status: 'eq.Pending', due_date: 'not.is.null' },
+  })) as unknown[]
+}
+
+export async function listUpcomingReminders(token: string, userId: string, limit = 5): Promise<unknown[]> {
+  return (await restCall('GET', REMINDERS_TABLE, token, {
+    params: {
+      select: REMINDER_ITEM_SELECT,
+      user_id: `eq.${userId}`,
+      status: 'eq.pending',
+      scheduled_for: `gte.${new Date().toISOString()}`,
+      order: 'scheduled_for.asc',
+      limit: String(limit),
+    },
+  })) as unknown[]
+}
+
+export async function listRecentReminders(token: string, userId: string, limit = 3): Promise<unknown[]> {
+  return (await restCall('GET', REMINDERS_TABLE, token, {
+    params: {
+      select: REMINDER_ITEM_SELECT,
+      user_id: `eq.${userId}`,
+      status: 'in.(sent,failed)',
+      order: 'scheduled_for.desc',
+      limit: String(limit),
+    },
+  })) as unknown[]
+}
+
+/** Drop unsent reminders for an item; called before re-creating them. */
+export async function deletePendingReminders(token: string, userId: string, itemId: string): Promise<void> {
+  await restCall('DELETE', REMINDERS_TABLE, token, {
+    params: { user_id: `eq.${userId}`, item_id: `eq.${itemId}`, status: 'eq.pending' },
+  })
+}
+
+/** Mark pending reminders as canceled (task completed or renewed). */
+export async function cancelPendingReminders(token: string, userId: string, itemId: string): Promise<void> {
+  await restCall('PATCH', REMINDERS_TABLE, token, {
+    params: { user_id: `eq.${userId}`, item_id: `eq.${itemId}`, status: 'eq.pending' },
+    json: { status: 'canceled' },
+  })
+}
+
+export async function insertReminders(token: string, rows: unknown[]): Promise<void> {
+  if (!rows.length) return
+  await restCall('POST', REMINDERS_TABLE, token, { json: rows })
+}
+
+/** Cheap existence probe used to backfill reminders for items created before scheduling existed. */
+export async function hasAnyReminders(token: string, userId: string): Promise<boolean> {
+  const rows = (await restCall('GET', REMINDERS_TABLE, token, {
+    params: { select: 'id', user_id: `eq.${userId}`, limit: '1' },
+  })) as unknown[]
+  return rows.length > 0
+}
+
+export async function listDueReminders(limit = 50): Promise<unknown[]> {
+  return (await serviceRestCall('GET', REMINDERS_TABLE, {
+    params: {
+      select: REMINDER_ITEM_SELECT,
+      status: 'eq.pending',
+      scheduled_for: `lte.${new Date().toISOString()}`,
+      order: 'scheduled_for.asc',
+      limit: String(limit),
+    },
+  })) as unknown[]
+}
+
+/**
+ * Atomically move a reminder from pending to processing. Returns null when
+ * another run already claimed it, so a reminder is never delivered twice.
+ */
+export async function claimReminder(id: string): Promise<unknown | null> {
+  const rows = (await serviceRestCall('PATCH', REMINDERS_TABLE, {
+    params: { id: `eq.${id}`, status: 'eq.pending' },
+    json: { status: 'processing', last_error: null },
+    prefer: 'return=representation',
+  })) as unknown[]
+  return rows[0] ?? null
+}
+
+export async function finishReminder(id: string, patch: Record<string, unknown>): Promise<void> {
+  await serviceRestCall('PATCH', REMINDERS_TABLE, {
+    params: { id: `eq.${id}` },
+    json: patch,
+  })
+}
+
+/** A run that crashed mid-delivery leaves rows in processing; fail them so they never re-send. */
+export async function failStuckReminders(cutoffIso: string): Promise<void> {
+  await serviceRestCall('PATCH', REMINDERS_TABLE, {
+    params: { status: 'eq.processing', scheduled_for: `lt.${cutoffIso}` },
+    json: { status: 'failed', last_error: 'Delivery was interrupted.' },
   })
 }

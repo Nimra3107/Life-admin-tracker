@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PriorityBadge, StatusBadge } from '@/components/Badges'
-import { formatDate, isOverdue, PRIORITY_COLORS, PRIORITY_ORDER, REMINDER_OPTIONS, toDateKey } from '@/lib/utils'
+import { formatDate, formatDateTime, isOverdue, PRIORITY_COLORS, PRIORITY_ORDER, REMINDER_OPTIONS, toDateKey } from '@/lib/utils'
 import type { LifeAdminItem } from '@/lib/types'
 import { AlertTriangle, Bell, Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
@@ -259,7 +259,7 @@ export default function CalendarClient({ initialItems }: Props) {
                         )}
                         <span className={`text-xs inline-flex items-center gap-1 ${overdue ? 'text-red-500 font-medium' : 'text-slate-500'}`}>
                           {overdue && <AlertTriangle className="w-3 h-3" />}
-                          Due {formatDate(task.due_date)}
+                          Due {formatDateTime(task.due_date, task.due_time)}
                         </span>
                       </div>
                       {reminders.length > 0 && (

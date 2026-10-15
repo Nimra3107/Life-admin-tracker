@@ -2,7 +2,9 @@ import { getCurrentUser, createServerApi } from '@/lib/api/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { PriorityBadge, StatusBadge } from '@/components/Badges'
-import { isOverdue, isDueSoon, formatDate, daysUntil, hasActiveReminder } from '@/lib/utils'
+import RemindersCard from '@/components/RemindersCard'
+import { isPushConfigured } from '@/lib/reminders/send'
+import { isOverdue, isDueSoon, formatDate, formatDateTime, daysUntil, hasActiveReminder } from '@/lib/utils'
 import type { LifeAdminItem } from '@/lib/types'
 import {
   CheckSquare,
@@ -24,6 +26,14 @@ export default async function DashboardPage() {
   if (itemsError) {
     console.error('Error fetching Life Admin items:', itemsError)
   }
+
+  const [{ data: reminders, error: remindersError }, { data: settings }] = await Promise.all([
+    api.reminders.overview(),
+    api.settings.get(),
+  ])
+  const upcomingReminders = reminders?.upcoming ?? []
+  const recentReminders = reminders?.recent ?? []
+  const timezone = settings?.timezone ?? 'UTC'
 
   const allItems: LifeAdminItem[] = items ?? []
 
@@ -172,6 +182,15 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {/* Push reminder schedule */}
+      <RemindersCard
+        upcoming={upcomingReminders}
+        recent={recentReminders}
+        timezone={timezone}
+        pushConfigured={isPushConfigured()}
+        errorMessage={remindersError?.message}
+      />
+
       {/* Recently added */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
@@ -212,9 +231,9 @@ export default async function DashboardPage() {
                     <td className="px-4 py-3"><PriorityBadge priority={item.priority} /></td>
                     <td className="px-4 py-3 hidden sm:table-cell text-slate-500 text-xs">
                       {isOverdue(item.due_date, item.status) ? (
-                        <span className="text-red-500 font-medium">{formatDate(item.due_date)}</span>
+                        <span className="text-red-500 font-medium">{formatDateTime(item.due_date, item.due_time)}</span>
                       ) : (
-                        formatDate(item.due_date)
+                        formatDateTime(item.due_date, item.due_time)
                       )}
                     </td>
                   </tr>

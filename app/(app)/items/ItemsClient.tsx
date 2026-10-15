@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createBrowserApi } from '@/lib/api/client'
 import { PriorityBadge, StatusBadge } from '@/components/Badges'
-import { formatDate, isOverdue, PRIORITY_ORDER } from '@/lib/utils'
+import { formatDateTime, isOverdue, PRIORITY_ORDER } from '@/lib/utils'
 import type { LifeAdminItem, Category, Priority, Status } from '@/lib/types'
 import {
   Plus,
@@ -223,7 +223,7 @@ export default function ItemsClient({ initialItems, categories }: Props) {
                     <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
                     <td className="px-4 py-3"><PriorityBadge priority={item.priority} /></td>
                     <td className={`px-4 py-3 text-xs ${overdue ? 'text-red-500 font-semibold' : 'text-slate-500'}`}>
-                      {formatDate(item.due_date)}
+                      {formatDateTime(item.due_date, item.due_time)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -283,7 +283,7 @@ export default function ItemsClient({ initialItems, categories }: Props) {
                   )}
                   {item.due_date && (
                     <span className={`px-2 py-0.5 rounded-full border ${overdue ? 'bg-red-50 text-red-600 border-red-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                      {formatDate(item.due_date)}
+                      {formatDateTime(item.due_date, item.due_time)}
                     </span>
                   )}
                 </div>

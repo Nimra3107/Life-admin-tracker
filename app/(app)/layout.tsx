@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/api/server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import TimezoneSync from '@/components/TimezoneSync'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
@@ -11,6 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <TimezoneSync />
       <Sidebar userEmail={user.email ?? ''} />
       {/* Desktop: offset for sidebar */}
       <main className="md:ml-60 pt-16 md:pt-0 min-h-screen">

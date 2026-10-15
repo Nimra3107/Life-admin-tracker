@@ -3,16 +3,36 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserApi } from '@/lib/api/client'
-import { REMINDER_OPTIONS } from '@/lib/utils'
-import type { LifeAdminItem, Category } from '@/lib/types'
+import { NOTIFICATION_PREFERENCE_OPTIONS, REMINDER_OPTIONS, TIME_REMINDER_OPTIONS } from '@/lib/utils'
+import { enablePushNotifications } from '@/lib/push'
+import type { LifeAdminItem, Category, NotificationPreference } from '@/lib/types'
 import { Save, X } from 'lucide-react'
 
 interface Props {
   item?: LifeAdminItem
   categories: Category[]
+  /** The user's stored IANA zone, shown as a hint so due times are unambiguous. */
+  timezone?: string
 }
 
-export default function ItemForm({ item, categories }: Props) {
+/**
+ * Reminder offsets must always be plain integers in the payload (Supabase's
+ * integer[] column). Values loaded from the API may be numeric strings if they
+ * were stored by an older client, so coerce them and drop anything invalid.
+ */
+function toIntList(value: unknown, max: number): number[] {
+  if (!Array.isArray(value)) return []
+  const out: number[] = []
+  for (const raw of value) {
+    const parsed = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw
+    if (typeof parsed === 'number' && Number.isInteger(parsed) && parsed >= 0 && parsed <= max) {
+      out.push(parsed)
+    }
+  }
+  return out
+}
+
+export default function ItemForm({ item, categories, timezone }: Props) {
   const router = useRouter()
   const isEdit = !!item
 
@@ -20,9 +40,16 @@ export default function ItemForm({ item, categories }: Props) {
   const [description, setDescription] = useState(item?.description ?? '')
   const [categoryId, setCategoryId] = useState(item?.category_id ?? '')
   const [dueDate, setDueDate] = useState(item?.due_date ?? '')
+  const [dueTime, setDueTime] = useState(item?.due_time?.slice(0, 5) ?? '')
   const [priority, setPriority] = useState(item?.priority ?? 'Medium')
   const [status, setStatus] = useState(item?.status ?? 'Pending')
-  const [reminderDays, setReminderDays] = useState<number[]>(item?.reminder_days ?? [])
+  const [reminderDays, setReminderDays] = useState<number[]>(() => toIntList(item?.reminder_days, 365))
+  const [reminderMinutes, setReminderMinutes] = useState<number[]>(() => toIntList(item?.reminder_minutes, 1440))
+  const [notificationPreference, setNotificationPreference] = useState<NotificationPreference>(
+    item?.notification_preference ?? 'dashboard'
+  )
+  const [pushNote, setPushNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [pushBusy, setPushBusy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -31,6 +58,36 @@ export default function ItemForm({ item, categories }: Props) {
     setReminderDays((prev) =>
       prev.includes(val) ? prev.filter((d) => d !== val) : [...prev, val]
     )
+  }
+
+  function toggleMinuteReminder(val: number) {
+    setReminderMinutes((prev) =>
+      prev.includes(val) ? prev.filter((d) => d !== val) : [...prev, val]
+    )
+  }
+
+  function handleDueTimeChange(value: string) {
+    setDueTime(value)
+    // Time-based reminders count back from the due time, so they cannot stay
+    // selected once it is cleared.
+    if (!value) setReminderMinutes([])
+  }
+
+  function handlePreferenceChange(value: NotificationPreference) {
+    setNotificationPreference(value)
+    setPushNote(null)
+    // Permission is only requested when the user opts into push notifications.
+    if (value !== 'dashboard') {
+      setPushBusy(true)
+      enablePushNotifications().then((result) => {
+        setPushBusy(false)
+        setPushNote(
+          result.ok
+            ? { ok: true, text: 'Push notifications are enabled for this browser.' }
+            : { ok: false, text: result.message }
+        )
+      })
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -43,15 +100,28 @@ export default function ItemForm({ item, categories }: Props) {
     setLoading(true)
     const api = createBrowserApi()
 
+    // Refresh the FCM token silently when permission was already granted (no prompt).
+    if (
+      notificationPreference !== 'dashboard' &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'granted'
+    ) {
+      void enablePushNotifications()
+    }
+
     // user_id and updated_at are set by the backend from the verified login.
     const payload = {
       title: title.trim(),
       description: description.trim() || null,
       category_id: categoryId || null,
       due_date: dueDate || null,
+      due_time: dueTime || null,
       priority,
       status,
-      reminder_days: reminderDays,
+      reminder_days: toIntList(reminderDays, 365),
+      reminder_minutes: dueTime ? toIntList(reminderMinutes, 1440) : [],
+      notification_preference: notificationPreference,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }
 
     let err
@@ -73,6 +143,14 @@ export default function ItemForm({ item, categories }: Props) {
 
   const inputClass = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-slate-800 placeholder-slate-400'
   const labelClass = 'block text-sm font-medium text-slate-700 mb-1'
+  const chipClass = (selected: boolean, disabled = false) =>
+    `flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
+      disabled
+        ? 'bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed'
+        : selected
+          ? 'bg-teal-50 border-teal-400 text-teal-700 font-medium'
+          : 'bg-white border-slate-200 text-slate-600 hover:border-teal-300'
+    }`
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -144,6 +222,21 @@ export default function ItemForm({ item, categories }: Props) {
           />
         </div>
 
+        {/* Due time */}
+        <div>
+          <label htmlFor="due_time" className={labelClass}>Due Time</label>
+          <input
+            id="due_time"
+            type="time"
+            value={dueTime}
+            onChange={(e) => handleDueTimeChange(e.target.value)}
+            className={inputClass}
+          />
+          <p className="text-xs text-slate-400 mt-1.5">
+            {timezone ? `Times are in your time zone (${timezone}).` : 'Times are in your local time zone.'}
+          </p>
+        </div>
+
         {/* Priority */}
         <div>
           <label htmlFor="priority" className={labelClass}>Priority</label>
@@ -181,14 +274,7 @@ export default function ItemForm({ item, categories }: Props) {
         <label className={labelClass}>Reminders</label>
         <div className="flex flex-wrap gap-3">
           {REMINDER_OPTIONS.map(({ value, label }) => (
-            <label
-              key={value}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
-                reminderDays.includes(value)
-                  ? 'bg-teal-50 border-teal-400 text-teal-700 font-medium'
-                  : 'bg-white border-slate-200 text-slate-600 hover:border-teal-300'
-              }`}
-            >
+            <label key={value} className={chipClass(reminderDays.includes(value))}>
               <input
                 type="checkbox"
                 className="sr-only"
@@ -199,7 +285,48 @@ export default function ItemForm({ item, categories }: Props) {
             </label>
           ))}
         </div>
-        <p className="text-xs text-slate-400 mt-1.5">Reminders appear on the dashboard when the due date approaches.</p>
+        <div className="flex flex-wrap gap-3 mt-2">
+          {TIME_REMINDER_OPTIONS.map(({ value, label }) => (
+            <label key={value} className={chipClass(reminderMinutes.includes(value), !dueTime)}>
+              <input
+                type="checkbox"
+                className="sr-only"
+                disabled={!dueTime}
+                checked={reminderMinutes.includes(value)}
+                onChange={() => toggleMinuteReminder(value)}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        {!dueTime && (
+          <p className="text-xs text-slate-400 mt-1.5">Set a due time to use the 1 hour / 30 minute / 15 minute reminders.</p>
+        )}
+      </div>
+
+      {/* Notification preference */}
+      <div>
+        <label htmlFor="notification_preference" className={labelClass}>Notifications</label>
+        <select
+          id="notification_preference"
+          value={notificationPreference}
+          onChange={(e) => handlePreferenceChange(e.target.value as NotificationPreference)}
+          className={inputClass}
+        >
+          {NOTIFICATION_PREFERENCE_OPTIONS.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <p className="text-xs text-slate-400 mt-1.5">
+          {pushBusy
+            ? 'Requesting permission…'
+            : 'Push reminders are delivered to this browser even when the app is closed.'}
+        </p>
+        {pushNote && (
+          <p className={`text-xs mt-1 ${pushNote.ok ? 'text-teal-600' : 'text-amber-600'}`}>
+            {pushNote.text}
+          </p>
+        )}
       </div>
 
       {/* Actions */}

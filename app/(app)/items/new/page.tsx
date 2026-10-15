@@ -7,7 +7,10 @@ export default async function NewItemPage() {
   if (!user) redirect('/login')
 
   const api = await createServerApi()
-  const { data: categories } = await api.categories.list()
+  const [{ data: categories }, { data: settings }] = await Promise.all([
+    api.categories.list(),
+    api.settings.get(),
+  ])
 
   return (
     <div className="max-w-2xl">
@@ -16,7 +19,7 @@ export default async function NewItemPage() {
         <p className="text-slate-500 text-sm mt-1">Fill in the details for your life admin task.</p>
       </div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <ItemForm categories={categories ?? []} />
+        <ItemForm categories={categories ?? []} timezone={settings?.timezone ?? undefined} />
       </div>
     </div>
   )

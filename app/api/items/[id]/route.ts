@@ -32,10 +32,9 @@ export async function PUT(req: NextRequest, { params }: Context) {
     parsePathId(id, 'item id')
     const user = await getRouteUser(req)
     const input = parseItemInput(await readJson(req))
-    const { timezone, ...columns } = input
-    const row = { ...columns, updated_at: new Date().toISOString() }
+    const row = { ...input, updated_at: new Date().toISOString() }
     const item = (await updateItem(user.token, user.id, id, row)) as LifeAdminItem
-    await refreshRemindersForSavedItem(user, item, timezone)
+    await refreshRemindersForSavedItem(user, item)
     return NextResponse.json(item)
   } catch (err) {
     return errorResponse(err)

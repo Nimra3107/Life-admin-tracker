@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { PriorityBadge, StatusBadge } from '@/components/Badges'
 import RemindersCard from '@/components/RemindersCard'
-import { isPushConfigured } from '@/lib/reminders/send'
+import { isPushConfigured, missingPushServerEnvVars } from '@/lib/reminders/send'
 import { isOverdue, isDueSoon, formatDate, formatDateTime, daysUntil, hasActiveReminder } from '@/lib/utils'
 import type { LifeAdminItem } from '@/lib/types'
 import {
@@ -27,13 +27,9 @@ export default async function DashboardPage() {
     console.error('Error fetching Life Admin items:', itemsError)
   }
 
-  const [{ data: reminders, error: remindersError }, { data: settings }] = await Promise.all([
-    api.reminders.overview(),
-    api.settings.get(),
-  ])
+  const { data: reminders, error: remindersError } = await api.reminders.overview()
   const upcomingReminders = reminders?.upcoming ?? []
   const recentReminders = reminders?.recent ?? []
-  const timezone = settings?.timezone ?? 'UTC'
 
   const allItems: LifeAdminItem[] = items ?? []
 
@@ -186,8 +182,8 @@ export default async function DashboardPage() {
       <RemindersCard
         upcoming={upcomingReminders}
         recent={recentReminders}
-        timezone={timezone}
         pushConfigured={isPushConfigured()}
+        pushSetupMissing={missingPushServerEnvVars()}
         errorMessage={remindersError?.message}
       />
 

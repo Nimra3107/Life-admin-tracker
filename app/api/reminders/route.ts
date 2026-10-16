@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 import {
   errorResponse,
   getRouteUser,
-  getUserTimezone,
   listRecentReminders,
   listUpcomingReminders,
 } from '@/lib/supabase/api'
@@ -18,8 +17,7 @@ export async function GET(req: NextRequest) {
     // A failure here is logged only — the list queries below still report real
     // problems (e.g. a missing table) to the caller.
     try {
-      const timezone = (await getUserTimezone(user.token, user.id)) ?? 'UTC'
-      await backfillRemindersIfEmpty(user.token, user.id, timezone)
+      await backfillRemindersIfEmpty(user.token, user.id)
     } catch (err) {
       console.error('Failed to backfill reminders', err)
     }

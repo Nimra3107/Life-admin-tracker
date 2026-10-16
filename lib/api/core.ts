@@ -33,8 +33,6 @@ export interface ItemInput {
   reminder_days: number[]
   reminder_minutes: number[]
   notification_preference: NotificationPreference
-  /** Optional: the browser's IANA zone, so reminders schedule in local time. */
-  timezone?: string
 }
 
 export interface SessionPayload extends Session {
@@ -146,11 +144,6 @@ export function createApi(
     },
     reminders: {
       overview: () => request<{ upcoming: Reminder[]; recent: Reminder[] }>('GET', '/api/reminders'),
-    },
-    settings: {
-      get: () => request<{ timezone: string | null }>('GET', '/api/settings/timezone'),
-      setTimezone: (timezone: string) =>
-        request<{ timezone: string; changed: boolean }>('PUT', '/api/settings/timezone', { timezone }),
     },
     push: {
       register: (token: string) => request<{ ok: boolean }>('POST', '/api/push/token', { token }),

@@ -1,6 +1,5 @@
 import { type NextRequest } from 'next/server'
 import { ApiError } from '@/lib/supabase/api'
-import { isValidTimeZone } from '@/lib/time'
 import type { ItemInput } from './core'
 import type { NotificationPreference, Priority, Status } from '@/lib/types'
 
@@ -132,13 +131,6 @@ export function parseItemInput(body: Record<string, unknown>): ItemInput {
     notificationPreference = body.notification_preference as NotificationPreference
   }
 
-  // Optional: the browser reports its IANA zone so reminders are scheduled in
-  // the user's local time. Absent or invalid values are ignored.
-  let timezone: string | undefined
-  if (typeof body.timezone === 'string' && body.timezone && isValidTimeZone(body.timezone)) {
-    timezone = body.timezone
-  }
-
   return {
     title,
     description,
@@ -150,17 +142,7 @@ export function parseItemInput(body: Record<string, unknown>): ItemInput {
     reminder_days: reminderDays,
     reminder_minutes: reminderMinutes,
     notification_preference: notificationPreference,
-    timezone,
   }
-}
-
-/** Body for the time-zone settings endpoint. */
-export function parseTimezone(body: Record<string, unknown>): string {
-  const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : ''
-  if (!timezone || !isValidTimeZone(timezone)) {
-    bad('timezone must be a valid IANA time zone (e.g. Asia/Karachi).')
-  }
-  return timezone
 }
 
 /** Body for registering an FCM device token. */

@@ -19,10 +19,9 @@ export async function POST(req: NextRequest) {
     const user = await getRouteUser(req)
     const input = parseItemInput(await readJson(req))
     // user_id is always the verified caller, never client-supplied.
-    const { timezone, ...columns } = input
-    const row = { ...columns, user_id: user.id, updated_at: new Date().toISOString() }
+    const row = { ...input, user_id: user.id, updated_at: new Date().toISOString() }
     const item = (await createItem(user.token, row)) as LifeAdminItem
-    await refreshRemindersForSavedItem(user, item, timezone)
+    await refreshRemindersForSavedItem(user, item)
     return NextResponse.json(item, { status: 201 })
   } catch (err) {
     return errorResponse(err)

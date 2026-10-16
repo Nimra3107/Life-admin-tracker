@@ -200,6 +200,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/cron/reminders/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/cron/reminders">> = Specific
+  const handler = {} as typeof import("../../app/api/cron/reminders/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/items/[id]/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/items/[id]">> = Specific
@@ -213,6 +222,33 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/items">> = Specific
   const handler = {} as typeof import("../../app/api/items/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/push/token/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/push/token">> = Specific
+  const handler = {} as typeof import("../../app/api/push/token/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/reminders/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/reminders">> = Specific
+  const handler = {} as typeof import("../../app/api/reminders/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/firebase-messaging-sw.js/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/firebase-messaging-sw.js">> = Specific
+  const handler = {} as typeof import("../../app/firebase-messaging-sw.js/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

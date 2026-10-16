@@ -114,11 +114,18 @@ async function restCall(
   method: string,
   table: string,
   token: string,
-  opts: { params?: Record<string, string>; json?: unknown; single?: boolean; prefer?: string } = {}
+  opts: {
+    params?: Record<string, string>
+    json?: unknown
+    single?: boolean
+    prefer?: string
+    /** Overrides the `apikey` header; needed when `token` is the service key (see below). */
+    apiKey?: string
+  } = {}
 ): Promise<unknown> {
   requireConfig()
   const headers: Record<string, string> = {
-    apikey: SUPABASE_ANON_KEY,
+    apikey: opts.apiKey ?? SUPABASE_ANON_KEY,
     Authorization: `Bearer ${token}`,
   }
   if (opts.single) headers.Accept = 'application/vnd.pgrst.object+json'
@@ -286,10 +293,9 @@ export async function deleteCategory(token: string, userId: string, categoryId: 
   })
 }
 
-// ---- reminders, settings and device tokens --------------------------------------
+// ---- reminders and device tokens ------------------------------------------------
 
 export const REMINDERS_TABLE = 'life_admin_reminders'
-export const SETTINGS_TABLE = 'life_admin_user_settings'
 export const DEVICE_TOKENS_TABLE = 'life_admin_device_tokens'
 
 /** Same join used when reminders are listed for the dashboard card. */
@@ -314,23 +320,11 @@ async function serviceRestCall(
   if (!hasServiceRoleKey()) {
     throw new ApiError(500, 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server.')
   }
-  return restCall(method, table, SUPABASE_SERVICE_KEY, opts)
-}
-
-/** The caller's stored IANA time zone, or null when nothing is stored yet. */
-export async function getUserTimezone(token: string, userId: string): Promise<string | null> {
-  const rows = (await restCall('GET', SETTINGS_TABLE, token, {
-    params: { select: 'timezone', user_id: `eq.${userId}` },
-  })) as { timezone: string }[]
-  return rows[0]?.timezone ?? null
-}
-
-export async function upsertUserTimezone(token: string, userId: string, timezone: string): Promise<void> {
-  await restCall('POST', SETTINGS_TABLE, token, {
-    params: { on_conflict: 'user_id' },
-    json: { user_id: userId, timezone, updated_at: new Date().toISOString() },
-    prefer: 'resolution=merge-duplicates',
-  })
+  // The service key is sent as BOTH apikey and Authorization. New-format
+  // "sb_secret_…" keys are not JWTs, and PostgREST rejects them with PGRST301
+  // ("Expected 3 parts in JWT") when they arrive as Bearer next to a different
+  // apikey. Sending the same key in both headers also works with legacy keys.
+  return restCall(method, table, SUPABASE_SERVICE_KEY, { apiKey: SUPABASE_SERVICE_KEY, ...opts })
 }
 
 /** Register (or re-activate) an FCM token for the signed-in user. */
@@ -408,9 +402,12 @@ export async function cancelPendingReminders(token: string, userId: string, item
   })
 }
 
-export async function insertReminders(token: string, rows: unknown[]): Promise<void> {
-  if (!rows.length) return
-  await restCall('POST', REMINDERS_TABLE, token, { json: rows })
+export async function insertReminders(token: string, rows: unknown[]): Promise<unknown[]> {
+  if (!rows.length) return []
+  return (await restCall('POST', REMINDERS_TABLE, token, {
+    json: rows,
+    prefer: 'return=representation',
+  })) as unknown[]
 }
 
 /** Cheap existence probe used to backfill reminders for items created before scheduling existed. */
@@ -435,11 +432,13 @@ export async function listDueReminders(limit = 50): Promise<unknown[]> {
 
 /**
  * Atomically move a reminder from pending to processing. Returns null when
- * another run already claimed it, so a reminder is never delivered twice.
+ * another run already claimed it, so a reminder is never delivered twice. The
+ * embedded item is selected explicitly: without `select`, PATCH responses come
+ * back as plain rows and the cron route would see no item at all.
  */
 export async function claimReminder(id: string): Promise<unknown | null> {
   const rows = (await serviceRestCall('PATCH', REMINDERS_TABLE, {
-    params: { id: `eq.${id}`, status: 'eq.pending' },
+    params: { id: `eq.${id}`, status: 'eq.pending', select: REMINDER_ITEM_SELECT },
     json: { status: 'processing', last_error: null },
     prefer: 'return=representation',
   })) as unknown[]

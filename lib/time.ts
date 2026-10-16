@@ -1,16 +1,10 @@
 /**
- * IANA time-zone helpers used by the server-side reminder scheduler.
- * Node ships full ICU, so Intl resolves historical/DST offsets for us.
+ * The single time zone used everywhere in this app: Pakistan Standard Time
+ * (UTC+05:00, no DST). Due dates/times are entered, stored and displayed as
+ * PKT wall-clock values; reminder instants are converted from PKT to UTC here
+ * and only stored as UTC (scheduled_for) in Supabase.
  */
-
-export function isValidTimeZone(timeZone: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone })
-    return true
-  } catch {
-    return false
-  }
-}
+export const APP_TIMEZONE = 'Asia/Karachi'
 
 /**
  * Convert a wall-clock date/time ("2026-10-20", "14:30") in an IANA zone to

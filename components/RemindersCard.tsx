@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Bell, CalendarClock } from 'lucide-react'
+import { APP_TIMEZONE } from '@/lib/time'
 import {
   CHANNEL_LABELS,
   REMINDER_STATUS_COLORS,
@@ -14,13 +15,14 @@ import type { Reminder } from '@/lib/types'
 interface Props {
   upcoming: Reminder[]
   recent: Reminder[]
-  timezone: string
   pushConfigured: boolean
+  /** Names (never values) of the push variables that are missing or unusable. */
+  pushSetupMissing?: string[]
   /** Set when the reminders API failed, so the failure is visible instead of hidden. */
   errorMessage?: string
 }
 
-function ReminderRow({ reminder, timezone }: { reminder: Reminder; timezone: string }) {
+function ReminderRow({ reminder }: { reminder: Reminder }) {
   const title = reminder.item?.title ?? reminder.title
   const due = reminder.item?.due_date
     ? `Due ${formatDate(reminder.item.due_date)}${
@@ -39,7 +41,7 @@ function ReminderRow({ reminder, timezone }: { reminder: Reminder; timezone: str
           {due} · {reminderKindLabel(reminder.kind)}
         </p>
         <p className="text-xs text-slate-400 mt-0.5">
-          {formatDateTimeInTimeZone(reminder.scheduled_for, timezone)}
+          {formatDateTimeInTimeZone(reminder.scheduled_for, APP_TIMEZONE)} (PKT)
         </p>
       </div>
       <div className="flex flex-col items-end gap-1 shrink-0">
@@ -58,7 +60,7 @@ function ReminderRow({ reminder, timezone }: { reminder: Reminder; timezone: str
 }
 
 /** Compact dashboard card: upcoming scheduled reminders + delivery status. */
-export default function RemindersCard({ upcoming, recent, timezone, pushConfigured, errorMessage }: Props) {
+export default function RemindersCard({ upcoming, recent, pushConfigured, pushSetupMissing, errorMessage }: Props) {
   const pushNeedsSetup = !pushConfigured && upcoming.some((r) => r.channel !== 'dashboard')
 
   return (
@@ -96,7 +98,7 @@ export default function RemindersCard({ upcoming, recent, timezone, pushConfigur
               <p className="text-slate-400 text-sm px-4 py-6 text-center">Nothing scheduled yet.</p>
             ) : (
               upcoming.map((reminder) => (
-                <ReminderRow key={reminder.id} reminder={reminder} timezone={timezone} />
+                <ReminderRow key={reminder.id} reminder={reminder} />
               ))
             )}
           </div>
@@ -107,7 +109,7 @@ export default function RemindersCard({ upcoming, recent, timezone, pushConfigur
               </p>
               <div className="divide-y divide-slate-50">
                 {recent.map((reminder) => (
-                  <ReminderRow key={reminder.id} reminder={reminder} timezone={timezone} />
+                  <ReminderRow key={reminder.id} reminder={reminder} />
                 ))}
               </div>
             </div>
@@ -119,6 +121,7 @@ export default function RemindersCard({ upcoming, recent, timezone, pushConfigur
         <div className="px-4 py-2 border-t border-slate-100">
           <p className="text-xs text-amber-600">
             Push reminders need the Firebase environment variables before they can be delivered.
+            {pushSetupMissing && pushSetupMissing.length > 0 ? ` Missing: ${pushSetupMissing.join(', ')}.` : ''}
           </p>
         </div>
       )}

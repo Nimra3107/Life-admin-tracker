@@ -1,5 +1,10 @@
 {
   "pages": {
+    "/api/auth/refresh/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/auth/refresh/route.js"
+    ],
     "/api/auth/me/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -21,15 +26,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(app)/page.js"
     ],
+    "/api/cron/reminders/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/cron/reminders/route.js"
+    ],
     "/api/items/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/items/route.js"
     ],
-    "/(app)/calendar/page": [
+    "/api/reminders/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(app)/calendar/page.js"
+      "static/chunks/app/api/reminders/route.js"
     ],
     "/(app)/items/page": [
       "static/chunks/webpack.js",
@@ -41,15 +51,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/categories/route.js"
     ],
-    "/(app)/categories/page": [
+    "/(app)/items/[id]/edit/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(app)/categories/page.js"
+      "static/chunks/app/(app)/items/[id]/edit/page.js"
     ],
-    "/(app)/items/new/page": [
+    "/api/items/[id]/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(app)/items/new/page.js"
+      "static/chunks/app/api/items/[id]/route.js"
+    ],
+    "/firebase-messaging-sw.js/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/firebase-messaging-sw.js/route.js"
     ]
   }
 }

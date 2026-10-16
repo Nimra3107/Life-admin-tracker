@@ -10,15 +10,12 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
   if (!user) redirect('/login')
 
   const api = await createServerApi()
-  const [{ data: item }, { data: categories }, { data: settings }] = await Promise.all([
+  const [{ data: item }, { data: categories }] = await Promise.all([
     api.items.get(id),
     api.categories.list(),
-    api.settings.get(),
   ])
 
   if (!item) notFound()
-
-  const timezone = settings?.timezone ?? null
 
   return (
     <div className="max-w-2xl">
@@ -30,7 +27,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
           {item.due_date ? (
             <span>
               Due {formatDateTime(item.due_date, item.due_time)}
-              {timezone && <span className="text-slate-400"> ({timezone})</span>}
+              <span className="text-slate-400"> (PKT)</span>
             </span>
           ) : (
             <span className="text-slate-400">No due date set</span>
@@ -38,7 +35,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
         </p>
       </div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <ItemForm item={item} categories={categories ?? []} timezone={timezone ?? undefined} />
+        <ItemForm item={item} categories={categories ?? []} />
       </div>
     </div>
   )

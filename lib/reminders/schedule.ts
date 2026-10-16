@@ -1,23 +1,22 @@
-import { zonedTimeToUtc } from '@/lib/time'
+import { APP_TIMEZONE, zonedTimeToUtc } from '@/lib/time'
 import type { LifeAdminItem } from '@/lib/types'
 import {
   cancelPendingReminders,
   deletePendingReminders,
-  getUserTimezone,
   hasAnyReminders,
   insertReminders,
   listItemsPendingWithDueDate,
-  upsertUserTimezone,
   type RouteUser,
 } from '@/lib/supabase/api'
 
 /**
- * Reminders are stored as absolute UTC instants (scheduled_for) computed from the
- * item's local due date/time in the user's IANA zone, so the cron route never has
- * to do time-zone math and every user sees reminders at their own local time.
+ * Every reminder is scheduled in Pakistan Standard Time (APP_TIMEZONE): the
+ * item's due date/time are PKT wall-clock values, converted once here to a UTC
+ * instant and stored as scheduled_for. The cron route never does time-zone
+ * math, and the browser's own time zone is never consulted.
  */
 
-/** When only a due date is set, day-based reminders fire at 09:00 local time. */
+/** When only a due date is set, day-based reminders fire at 09:00 PKT. */
 const DEFAULT_DUE_TIME = '09:00'
 
 export interface ReminderRow {
@@ -30,19 +29,40 @@ export interface ReminderRow {
   title: string
 }
 
+interface InsertedReminderRow {
+  id?: string
+  item_id?: string
+  kind?: string
+  scheduled_for?: string
+  channel?: string
+  status?: string
+}
+
+/**
+ * Debug log for stages 1–2 of the push flow: a reminder row now exists in
+ * Supabase. Logs identifiers only — never tokens or credentials.
+ */
+function logCreatedReminders(created: InsertedReminderRow[], fallbackCount: number): void {
+  if (!created.length) {
+    console.log(`[reminders] created ${fallbackCount} reminder(s) (insert returned no representation)`)
+    return
+  }
+  for (const row of created) {
+    console.log(
+      `[reminders] created: id=${row.id} item=${row.item_id} kind=${row.kind} scheduled_for=${row.scheduled_for} channel=${row.channel} status=${row.status}`
+    )
+  }
+}
+
 /** Build the pending reminder rows for one item, skipping offsets already in the past. */
-export function buildReminderRows(
-  item: LifeAdminItem,
-  timezone: string,
-  now: Date = new Date()
-): ReminderRow[] {
+export function buildReminderRows(item: LifeAdminItem, now: Date = new Date()): ReminderRow[] {
   if (!item.due_date || item.status !== 'Pending') return []
 
   const hasDueTime = Boolean(item.due_time)
   const anchor = zonedTimeToUtc(
     item.due_date,
     hasDueTime ? item.due_time!.slice(0, 5) : DEFAULT_DUE_TIME,
-    timezone
+    APP_TIMEZONE
   )
 
   const offsets: [string, number][] = []
@@ -76,29 +96,15 @@ export function buildReminderRows(
   return rows
 }
 
-async function syncItemReminders(
-  token: string,
-  userId: string,
-  item: LifeAdminItem,
-  timezone: string
-): Promise<void> {
+async function syncItemReminders(token: string, userId: string, item: LifeAdminItem): Promise<void> {
   await deletePendingReminders(token, userId, item.id)
-  const rows = buildReminderRows(item, timezone)
-  if (rows.length) await insertReminders(token, rows)
-}
-
-/** Rebuild every pending item's reminders; used when the user's time zone changes. */
-export async function rescheduleAllReminders(
-  token: string,
-  userId: string,
-  timezone: string
-): Promise<void> {
-  const items = (await listItemsPendingWithDueDate(token, userId)) as LifeAdminItem[]
-  for (const item of items) {
-    await deletePendingReminders(token, userId, item.id)
-    const rows = buildReminderRows(item, timezone)
-    if (rows.length) await insertReminders(token, rows)
+  const rows = buildReminderRows(item)
+  if (!rows.length) {
+    console.log(`[reminders] item ${item.id}: no future reminders to schedule`)
+    return
   }
+  const created = (await insertReminders(token, rows)) as InsertedReminderRow[]
+  logCreatedReminders(created, rows.length)
 }
 
 /**
@@ -106,49 +112,33 @@ export async function rescheduleAllReminders(
  * scheduling was deployed, or the first load after the migration), create them
  * from the current items. Read-only when rows already exist.
  */
-export async function backfillRemindersIfEmpty(
-  token: string,
-  userId: string,
-  timezone: string
-): Promise<void> {
+export async function backfillRemindersIfEmpty(token: string, userId: string): Promise<void> {
   if (await hasAnyReminders(token, userId)) return
   const items = (await listItemsPendingWithDueDate(token, userId)) as LifeAdminItem[]
-  const rows = items.flatMap((item) => buildReminderRows(item, timezone))
-  if (rows.length) await insertReminders(token, rows)
+  const rows = items.flatMap((item) => buildReminderRows(item))
+  if (rows.length) {
+    console.log(`[reminders] backfill: creating ${rows.length} reminder(s) for ${items.length} item(s)`)
+    const created = (await insertReminders(token, rows)) as InsertedReminderRow[]
+    logCreatedReminders(created, rows.length)
+  }
 }
 
 /**
- * Entry point for item create/update. Stores the browser's time zone when sent,
- * reschedules everything if it changed, and otherwise reschedules just this item.
- * Items that are completed/renewed get their pending reminders canceled.
- * Never throws: reminder scheduling must not break item CRUD (errors are logged).
+ * Entry point for item create/update: rebuild this item's pending reminders in
+ * Pakistan time. Items that are completed/renewed get their pending reminders
+ * canceled. Never throws: reminder scheduling must not break item CRUD (errors
+ * are logged).
  */
-export async function refreshRemindersForSavedItem(
-  user: RouteUser,
-  item: LifeAdminItem,
-  clientTimezone?: string
-): Promise<void> {
+export async function refreshRemindersForSavedItem(user: RouteUser, item: LifeAdminItem): Promise<void> {
   try {
-    const storedTimezone = await getUserTimezone(user.token, user.id)
-    let timezone = storedTimezone ?? 'UTC'
-    let timezoneChanged = false
-
-    if (clientTimezone && clientTimezone !== storedTimezone) {
-      await upsertUserTimezone(user.token, user.id, clientTimezone)
-      timezone = clientTimezone
-      timezoneChanged = true
-    }
-
     if (item.status !== 'Pending') {
+      console.log(`[reminders] item ${item.id} is ${item.status} — canceling its pending reminders`)
       await cancelPendingReminders(user.token, user.id, item.id)
       return
     }
 
-    if (timezoneChanged) {
-      await rescheduleAllReminders(user.token, user.id, timezone)
-    } else {
-      await syncItemReminders(user.token, user.id, item, timezone)
-    }
+    console.log(`[reminders] item ${item.id} saved (status=${item.status}) — syncing reminders (PKT)`)
+    await syncItemReminders(user.token, user.id, item)
   } catch (err) {
     console.error('Failed to sync reminders for item', item.id, err)
   }
@@ -160,6 +150,7 @@ export async function clearRemindersForDeletedItem(
   itemId: string
 ): Promise<void> {
   try {
+    console.log(`[reminders] item ${itemId} deleted — clearing its pending reminders`)
     await deletePendingReminders(user.token, user.id, itemId)
   } catch (err) {
     console.error('Failed to clear reminders for item', itemId, err)

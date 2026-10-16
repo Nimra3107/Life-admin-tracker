@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PriorityBadge, StatusBadge } from '@/components/Badges'
-import { formatDate, formatDateTime, isOverdue, PRIORITY_COLORS, PRIORITY_ORDER, REMINDER_OPTIONS, toDateKey } from '@/lib/utils'
+import { appToday, formatDate, formatDateTime, isOverdue, PRIORITY_COLORS, PRIORITY_ORDER, REMINDER_OPTIONS, toDateKey } from '@/lib/utils'
 import type { LifeAdminItem } from '@/lib/types'
 import { AlertTriangle, Bell, Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
@@ -32,7 +32,7 @@ function reminderLabels(reminderDays: number[]): string[] {
 }
 
 export default function CalendarClient({ initialItems }: Props) {
-  const now = new Date()
+  const now = appToday()
   const [view, setView] = useState({ year: now.getFullYear(), month: now.getMonth() })
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
@@ -55,7 +55,7 @@ export default function CalendarClient({ initialItems }: Props) {
     month: 'long',
     year: 'numeric',
   })
-  const todayKey = toDateKey(new Date())
+  const todayKey = toDateKey(appToday())
   const selectedTasks = selectedKey ? tasksByDate.get(selectedKey) ?? [] : []
 
   function shiftMonth(delta: number) {
@@ -66,7 +66,7 @@ export default function CalendarClient({ initialItems }: Props) {
   }
 
   function goToday() {
-    const t = new Date()
+    const t = appToday()
     setView({ year: t.getFullYear(), month: t.getMonth() })
     setSelectedKey(toDateKey(t))
   }

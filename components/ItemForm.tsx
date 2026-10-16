@@ -11,8 +11,6 @@ import { Save, X } from 'lucide-react'
 interface Props {
   item?: LifeAdminItem
   categories: Category[]
-  /** The user's stored IANA zone, shown as a hint so due times are unambiguous. */
-  timezone?: string
 }
 
 /**
@@ -32,7 +30,7 @@ function toIntList(value: unknown, max: number): number[] {
   return out
 }
 
-export default function ItemForm({ item, categories, timezone }: Props) {
+export default function ItemForm({ item, categories }: Props) {
   const router = useRouter()
   const isEdit = !!item
 
@@ -110,6 +108,7 @@ export default function ItemForm({ item, categories, timezone }: Props) {
     }
 
     // user_id and updated_at are set by the backend from the verified login.
+    // Due date/time are wall-clock values interpreted as Pakistan time (PKT).
     const payload = {
       title: title.trim(),
       description: description.trim() || null,
@@ -121,7 +120,6 @@ export default function ItemForm({ item, categories, timezone }: Props) {
       reminder_days: toIntList(reminderDays, 365),
       reminder_minutes: dueTime ? toIntList(reminderMinutes, 1440) : [],
       notification_preference: notificationPreference,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }
 
     let err
@@ -233,7 +231,7 @@ export default function ItemForm({ item, categories, timezone }: Props) {
             className={inputClass}
           />
           <p className="text-xs text-slate-400 mt-1.5">
-            {timezone ? `Times are in your time zone (${timezone}).` : 'Times are in your local time zone.'}
+            Times are in Pakistan Standard Time (PKT, UTC+05:00).
           </p>
         </div>
 

@@ -1,3 +1,4 @@
+import { APP_TIMEZONE } from './time'
 import { type NotificationPreference, type Priority, type ReminderStatus, type Status } from './types'
 
 export const PRIORITY_ORDER: Record<Priority, number> = {
@@ -136,11 +137,21 @@ export function toDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-// Get today's date at midnight
-function getToday(): Date {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return today
+/**
+ * Today's calendar date in Pakistan time (the app's time zone), returned as a
+ * Date at browser-local midnight so day arithmetic below stays exact. Date-only
+ * comparisons like "overdue" and "due soon" therefore never depend on the
+ * device's own time zone.
+ */
+export function appToday(): Date {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const pick = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
+  return new Date(pick('year'), pick('month') - 1, pick('day'))
 }
 
 // Calculate days remaining until a due date
@@ -150,7 +161,7 @@ export function daysUntil(
   if (!dateStr) return null
 
   const due = getLocalDate(dateStr)
-  const today = getToday()
+  const today = appToday()
 
   const difference = due.getTime() - today.getTime()
 

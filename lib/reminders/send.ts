@@ -2,6 +2,10 @@
  * FCM delivery through the Firebase Admin SDK (HTTP v1 under the hood).
  * The service-account credentials are read from server env only and are never
  * bundled into client code; initialization is lazy so builds work without them.
+ *
+ * On desktop, FCM stores a push while the browser is not running and delivers it
+ * when the browser reconnects (up to TTL). A reminder accepted here on time can
+ * therefore surface minutes later; that delay is outside this send path.
  */
 
 const FIREBASE_SERVICE_ACCOUNT = process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? ''
@@ -72,18 +76,32 @@ export interface PushMessage {
   title: string
   body: string
   itemId: string
+  /** Unique reminder interval id; used as the web notification tag. */
+  reminderId: string
+  kind: string
 }
 
 export interface PushResult {
   delivered: number
+  attempted: number
+  duplicateTokens: number
   /** Tokens FCM reported as dead; the caller should disable them. */
   disabledTokens: string[]
   errors: string[]
 }
 
 export async function sendPush(tokens: string[], message: PushMessage): Promise<PushResult> {
-  const result: PushResult = { delivered: 0, disabledTokens: [], errors: [] }
-  if (!tokens.length) return result
+  // A registration endpoint retry can hand us the same token twice; sending it
+  // twice would display the same reminder twice on that browser.
+  const uniqueTokens = [...new Set(tokens)]
+  const result: PushResult = {
+    delivered: 0,
+    attempted: uniqueTokens.length,
+    duplicateTokens: tokens.length - uniqueTokens.length,
+    disabledTokens: [],
+    errors: [],
+  }
+  if (!uniqueTokens.length) return result
 
   console.log(`[push] FCM send starting: ${tokens.length} device(s), item=${message.itemId}, title="${message.title}"`)
   const messaging = await getMessagingClient()
@@ -92,9 +110,32 @@ export async function sendPush(tokens: string[], message: PushMessage): Promise<
   // Notification clicks are handled by the app's service worker, which navigates
   // to data.url below.
   const response = await messaging.sendEachForMulticast({
-    tokens,
+    tokens: uniqueTokens,
     notification: { title: message.title, body: message.body },
+<<<<<<< Updated upstream
     data: { itemId: message.itemId, url: `/items/${message.itemId}/edit` },
+=======
+    // Click navigation is handled by the service worker via data.url; a relative
+    // webpush.fcmOptions.link is rejected by FCM on real sends, so it is omitted.
+    data: {
+      itemId: message.itemId,
+      reminderId: message.reminderId,
+      kind: message.kind,
+      url: `/items/${message.itemId}/edit`,
+    },
+    webpush: {
+      // Ask FCM/Chrome to deliver promptly instead of batching a normal-urgency
+      // push; keep it for an hour only, matching the minute-reminder grace window.
+      headers: { Urgency: 'high', TTL: '3600' },
+      notification: {
+        // One notification per reminder interval on a browser. If the same
+        // reminder row is delivered twice (e.g. an old and a refreshed token),
+        // the second replaces the first instead of stacking.
+        tag: `reminder-${message.reminderId}`,
+        renotify: false,
+      },
+    },
+>>>>>>> Stashed changes
   })
 
   response.responses.forEach((res, index) => {
@@ -104,10 +145,14 @@ export async function sendPush(tokens: string[], message: PushMessage): Promise<
       return
     }
     const code = res.error?.code ?? ''
+<<<<<<< Updated upstream
     console.error(
       `[push] FCM send failed for device ${index + 1}/${tokens.length}: code=${code || 'unknown'} message=${res.error?.message ?? 'unknown'}`
     )
     if (INVALID_TOKEN_CODES.has(code)) result.disabledTokens.push(tokens[index])
+=======
+    if (INVALID_TOKEN_CODES.has(code)) result.disabledTokens.push(uniqueTokens[index])
+>>>>>>> Stashed changes
     result.errors.push(code || res.error?.message || 'Unknown FCM error')
   })
 

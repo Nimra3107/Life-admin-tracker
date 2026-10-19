@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 /**
- * Local reminder scheduler: ticks /api/cron/reminders once a minute so push
- * reminders fire on time while running the app on this machine. In production
- * the same route is ticked by Supabase pg_cron (see supabase/migrations) or by
- * the daily Vercel Cron fallback, so this script is only needed for local runs.
+ * Local reminder scheduler: ticks /api/cron/reminders every 10 seconds so push
+ * reminders fire close to their scheduled instant while running the app on this
+ * machine. Ticks land on each 10-second boundary, the instant every reminder
+ * scheduled at that boundary becomes due; reminder times are computed from the
+ * same clock, so there is no server-time race to wait out. Waiting an extra
+ * couple of seconds would only add that delay to every notification. If no
+ * Chrome process is running, the tick tells the route to use a native Windows
+ * toast instead of FCM, since web push would otherwise be held until the
+ * browser reopens. In production the same route is ticked by Supabase pg_cron
+ * (see supabase/migrations) or Vercel Cron, so this script is only needed for
+ * local runs.
  *
  * Usage:
- *   npm run scheduler:local                    tick every minute until stopped
+ *   npm run scheduler:local                    tick every 10 seconds until stopped
  *   node scripts/local-scheduler.mjs --once    single tick, then exit
  *
  * Target URL defaults to http://localhost:3000/api/cron/reminders; override
  * with CRON_TARGET_URL or pass a URL argument. CRON_SECRET is read from the
  * environment or .env and is never printed.
  */
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -20,7 +28,7 @@ const ONCE = process.argv.includes('--once')
 const argUrl = process.argv.slice(2).find((a) => a.startsWith('http'))
 const TARGET_URL =
   argUrl ?? process.env.CRON_TARGET_URL ?? 'http://localhost:3000/api/cron/reminders'
-const INTERVAL_MS = 60_000
+const INTERVAL_MS = 10_000
 const REQUEST_TIMEOUT_MS = 25_000
 const TIMEZONE = 'Asia/Karachi'
 
@@ -41,21 +49,55 @@ function readSecret() {
   return ''
 }
 
-function pktTime() {
+function pktTime(date = new Date()) {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    fractionalSecondDigits: 3,
     hour12: false,
-  }).format(new Date())
+  }).format(date)
 }
 
+/**
+ * Web push cannot be displayed while the browser process is closed; FCM would
+ * hold it until Chrome reopens. Report the state so the cron route can use the
+ * native Windows toast fallback instead of queueing a late push.
+ */
+function isBrowserRunning() {
+  if (process.platform !== 'win32') return true
+  try {
+    const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq chrome.exe', '/NH'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 3_000,
+    })
+    return /chrome\.exe/i.test(out)
+  } catch {
+    // Unknown state: keep FCM rather than risk a duplicate native notification.
+    return true
+  }
+}
+
+let lastBrowserRunning = null
+
 async function tick(secret) {
+  const browserRunning = isBrowserRunning()
+  if (browserRunning !== lastBrowserRunning) {
+    console.log(
+      `[scheduler] browser detected=${browserRunning} -> ${browserRunning ? 'FCM push' : 'native Windows toast fallback'}`
+    )
+    lastBrowserRunning = browserRunning
+  }
   try {
     const res = await fetch(TARGET_URL, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${secret}` },
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        'X-Local-Scheduler': '1',
+        'X-Browser-Running': browserRunning ? '1' : '0',
+      },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
     const text = await res.text()
@@ -66,11 +108,25 @@ async function tick(secret) {
       return false
     }
     let summary = text
+    let results = []
     try {
       const json = JSON.parse(text)
-      summary = `processed=${json.processed} sent=${json.sent} failed=${json.failed}`
+      summary = `processed=${json.processed} sent=${json.sent} failed=${json.failed} skipped=${json.skipped ?? 0} canceled=${json.canceled ?? 0}`
+      results = Array.isArray(json.results) ? json.results : []
     } catch {}
     console.log(`[scheduler] ${pktTime()} PKT tick ok: ${summary}`)
+    // Mirror per-reminder timing here so scheduled time, trigger time and
+    // lateness are visible even when the dev-server console is not being watched.
+    for (const r of results) {
+      const error = r.error ? ` error=${String(r.error).replace(/\s+/g, ' ').slice(0, 120)}` : ''
+      console.log(
+        `[scheduler]   reminder ${String(r.id).slice(0, 8)} ${r.kind} status=${r.status} scheduled_for=${r.scheduled_for}` +
+          `${r.notification_triggered_at ? ` notification_triggered_at=${r.notification_triggered_at}` : ''}` +
+          `${typeof r.late_by_ms === 'number' ? ` late_by_ms=${r.late_by_ms}` : ''}` +
+          `${typeof r.push_ms === 'number' ? ` push_ms=${r.push_ms}` : ''}` +
+          `${r.delivery ? ` delivery=${r.delivery}` : ''}${error}`
+      )
+    }
     return true
   } catch (err) {
     console.error(
@@ -87,7 +143,7 @@ if (!secret) {
 }
 
 console.log(
-  `[scheduler] target: ${TARGET_URL} (every 60s) — CRON_SECRET loaded (${secret.length} chars)`
+  `[scheduler] target: ${TARGET_URL} (every 10s) — CRON_SECRET loaded (${secret.length} chars)`
 )
 
 if (ONCE) {
@@ -100,12 +156,30 @@ process.on('SIGINT', () => {
   process.exit(0)
 })
 
+function nextTickAt(nowMs = Date.now()) {
+  const boundary = Math.floor(nowMs / INTERVAL_MS) * INTERVAL_MS
+  return boundary >= nowMs ? boundary : boundary + INTERVAL_MS
+}
+
 function schedule() {
-  const delay = INTERVAL_MS - (Date.now() % INTERVAL_MS)
+  const now = Date.now()
+  const target = nextTickAt(now)
+  const delay = target - now
   setTimeout(async () => {
+    const startedAt = Date.now()
+    const driftMs = startedAt - target
     await tick(secret)
+    const elapsedMs = Date.now() - startedAt
+    console.log(
+      `[scheduler] tick complete target=${new Date(target).toISOString()} actual=${new Date(startedAt).toISOString()} drift=${driftMs}ms request=${elapsedMs}ms${driftMs > 5_000 ? ' (late tick — host may have been asleep/busy)' : ''}`
+    )
     schedule()
   }, delay)
 }
 
+console.log(`[scheduler] next tick at ${pktTime(new Date(nextTickAt()))} PKT (10s boundary)`)
+// Catch anything that came due while this process was not running, then align
+// to the 10-second boundary. Overlap with an external trigger is safe: the cron
+// route claims each reminder atomically.
+await tick(secret)
 schedule()

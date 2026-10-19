@@ -60,8 +60,26 @@ function ReminderRow({ reminder }: { reminder: Reminder }) {
 }
 
 /** Compact dashboard card: upcoming scheduled reminders + delivery status. */
+<<<<<<< Updated upstream
 export default function RemindersCard({ upcoming, recent, pushConfigured, pushSetupMissing, errorMessage }: Props) {
   const pushNeedsSetup = !pushConfigured && upcoming.some((r) => r.channel !== 'dashboard')
+=======
+export default function RemindersCard({ upcoming, recent, timezone, pushConfigured, errorMessage }: Props) {
+  // Upcoming and recent are disjoint statuses in the API; filter by reminder id
+  // anyway so a race/stale response can never render the same reminder twice.
+  const seen = new Set<string>()
+  const uniqueUpcoming = upcoming.filter((reminder) => {
+    if (seen.has(reminder.id)) return false
+    seen.add(reminder.id)
+    return true
+  })
+  const uniqueRecent = recent.filter((reminder) => {
+    if (seen.has(reminder.id)) return false
+    seen.add(reminder.id)
+    return true
+  })
+  const pushNeedsSetup = !pushConfigured && uniqueUpcoming.some((r) => r.channel !== 'dashboard')
+>>>>>>> Stashed changes
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -70,8 +88,8 @@ export default function RemindersCard({ upcoming, recent, pushConfigured, pushSe
           <Bell className="w-4 h-4 text-teal-500" />
           <h2 className="font-semibold text-slate-900 text-sm">Push Reminders</h2>
         </div>
-        {upcoming.length > 0 && (
-          <span className="text-xs text-slate-500 font-medium">{upcoming.length} scheduled</span>
+        {uniqueUpcoming.length > 0 && (
+          <span className="text-xs text-slate-500 font-medium">{uniqueUpcoming.length} scheduled</span>
         )}
       </div>
 
@@ -81,7 +99,7 @@ export default function RemindersCard({ upcoming, recent, pushConfigured, pushSe
         </div>
       )}
 
-      {upcoming.length === 0 && recent.length === 0 ? (
+      {uniqueUpcoming.length === 0 && uniqueRecent.length === 0 ? (
         errorMessage ? null : (
           <div className="px-4 py-10 text-center">
             <CalendarClock className="w-10 h-10 text-slate-200 mx-auto mb-3" />
@@ -94,22 +112,32 @@ export default function RemindersCard({ upcoming, recent, pushConfigured, pushSe
       ) : (
         <>
           <div className="divide-y divide-slate-50">
-            {upcoming.length === 0 ? (
+            {uniqueUpcoming.length === 0 ? (
               <p className="text-slate-400 text-sm px-4 py-6 text-center">Nothing scheduled yet.</p>
             ) : (
+<<<<<<< Updated upstream
               upcoming.map((reminder) => (
                 <ReminderRow key={reminder.id} reminder={reminder} />
+=======
+              uniqueUpcoming.map((reminder) => (
+                <ReminderRow key={reminder.id} reminder={reminder} timezone={timezone} />
+>>>>>>> Stashed changes
               ))
             )}
           </div>
-          {recent.length > 0 && (
+          {uniqueRecent.length > 0 && (
             <div className="border-t border-slate-100">
               <p className="px-4 pt-3 text-xs font-medium text-slate-400 uppercase tracking-wider">
                 Recently delivered
               </p>
               <div className="divide-y divide-slate-50">
+<<<<<<< Updated upstream
                 {recent.map((reminder) => (
                   <ReminderRow key={reminder.id} reminder={reminder} />
+=======
+                {uniqueRecent.map((reminder) => (
+                  <ReminderRow key={reminder.id} reminder={reminder} timezone={timezone} />
+>>>>>>> Stashed changes
                 ))}
               </div>
             </div>

@@ -125,16 +125,18 @@ grant select, insert, update, delete on public.life_admin_reminders to service_r
 --    keep answering 404/PGRST205 from its schema cache).
 notify pgrst, 'reload schema';
 
--- 8. Optional: schedule the reminder processor with Supabase Cron (pg_cron).
---    Uncomment, replace the URL and secret, and run AFTER deploying the app
---    (Vercel Cron users can use vercel.json instead; on the Vercel Hobby plan
---    crons only run once per day, so Supabase Cron is recommended there).
+-- 8. Production trigger: run the processor every 10 seconds so reminders fire
+--    at their scheduled instant. pg_cron 1.5+ supports second intervals
+--    ('10 seconds'); Vercel Cron cannot run more often than once a minute, so
+--    it is only a fallback. Uncomment, replace the URL and secret, and run this
+--    AFTER deploying the app. Local runs use `npm run scheduler:local`, which
+--    ticks at the same 10-second cadence.
 --
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
 -- select cron.schedule(
 --   'life-admin-reminders',
---   '* * * * *',
+--   '10 seconds',
 --   $$
 --   select net.http_get(
 --     url := 'https://YOUR-APP-URL/api/cron/reminders',

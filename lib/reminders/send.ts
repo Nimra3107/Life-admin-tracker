@@ -103,7 +103,7 @@ export async function sendPush(tokens: string[], message: PushMessage): Promise<
   }
   if (!uniqueTokens.length) return result
 
-  console.log(`[push] FCM send starting: ${tokens.length} device(s), item=${message.itemId}, title="${message.title}"`)
+  console.log(`[push] FCM send starting: ${uniqueTokens.length} device(s), item=${message.itemId}, title="${message.title}"`)
   const messaging = await getMessagingClient()
   // No webpush.fcmOptions.link here: FCM validates that field strictly and a
   // relative path makes the whole send fail with messaging/invalid-argument.
@@ -112,11 +112,6 @@ export async function sendPush(tokens: string[], message: PushMessage): Promise<
   const response = await messaging.sendEachForMulticast({
     tokens: uniqueTokens,
     notification: { title: message.title, body: message.body },
-<<<<<<< Updated upstream
-    data: { itemId: message.itemId, url: `/items/${message.itemId}/edit` },
-=======
-    // Click navigation is handled by the service worker via data.url; a relative
-    // webpush.fcmOptions.link is rejected by FCM on real sends, so it is omitted.
     data: {
       itemId: message.itemId,
       reminderId: message.reminderId,
@@ -135,27 +130,22 @@ export async function sendPush(tokens: string[], message: PushMessage): Promise<
         renotify: false,
       },
     },
->>>>>>> Stashed changes
   })
 
   response.responses.forEach((res, index) => {
     if (res.success) {
       result.delivered += 1
-      console.log(`[push] FCM delivered to device ${index + 1}/${tokens.length}: messageId=${res.messageId}`)
+      console.log(`[push] FCM delivered to device ${index + 1}/${uniqueTokens.length}: messageId=${res.messageId}`)
       return
     }
     const code = res.error?.code ?? ''
-<<<<<<< Updated upstream
     console.error(
-      `[push] FCM send failed for device ${index + 1}/${tokens.length}: code=${code || 'unknown'} message=${res.error?.message ?? 'unknown'}`
+      `[push] FCM send failed for device ${index + 1}/${uniqueTokens.length}: code=${code || 'unknown'} message=${res.error?.message ?? 'unknown'}`
     )
-    if (INVALID_TOKEN_CODES.has(code)) result.disabledTokens.push(tokens[index])
-=======
     if (INVALID_TOKEN_CODES.has(code)) result.disabledTokens.push(uniqueTokens[index])
->>>>>>> Stashed changes
     result.errors.push(code || res.error?.message || 'Unknown FCM error')
   })
 
-  console.log(`[push] FCM send finished: delivered=${result.delivered}/${tokens.length}`)
+  console.log(`[push] FCM send finished: delivered=${result.delivered}/${result.attempted}`)
   return result
 }

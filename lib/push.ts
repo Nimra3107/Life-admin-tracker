@@ -60,9 +60,7 @@ export async function enablePushNotifications(): Promise<PushRegistrationResult>
 
   try {
     const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
-<<<<<<< Updated upstream
     console.log(`[push] service worker registered (scope: ${registration.scope})`)
-=======
     // The worker is generated per request with no-store; force an update check so
     // a corrected notification handler activates without waiting for the
     // browser's periodic check. Failure here must not block token registration.
@@ -71,7 +69,6 @@ export async function enablePushNotifications(): Promise<PushRegistrationResult>
     } catch {
       // Keep the existing worker; the current registration is still usable.
     }
->>>>>>> Stashed changes
     const { initializeApp, getApps } = await import('firebase/app')
     const { getMessaging, getToken } = await import('firebase/messaging')
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)

@@ -60,11 +60,7 @@ function ReminderRow({ reminder }: { reminder: Reminder }) {
 }
 
 /** Compact dashboard card: upcoming scheduled reminders + delivery status. */
-<<<<<<< Updated upstream
 export default function RemindersCard({ upcoming, recent, pushConfigured, pushSetupMissing, errorMessage }: Props) {
-  const pushNeedsSetup = !pushConfigured && upcoming.some((r) => r.channel !== 'dashboard')
-=======
-export default function RemindersCard({ upcoming, recent, timezone, pushConfigured, errorMessage }: Props) {
   // Upcoming and recent are disjoint statuses in the API; filter by reminder id
   // anyway so a race/stale response can never render the same reminder twice.
   const seen = new Set<string>()
@@ -79,7 +75,6 @@ export default function RemindersCard({ upcoming, recent, timezone, pushConfigur
     return true
   })
   const pushNeedsSetup = !pushConfigured && uniqueUpcoming.some((r) => r.channel !== 'dashboard')
->>>>>>> Stashed changes
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -115,13 +110,8 @@ export default function RemindersCard({ upcoming, recent, timezone, pushConfigur
             {uniqueUpcoming.length === 0 ? (
               <p className="text-slate-400 text-sm px-4 py-6 text-center">Nothing scheduled yet.</p>
             ) : (
-<<<<<<< Updated upstream
-              upcoming.map((reminder) => (
-                <ReminderRow key={reminder.id} reminder={reminder} />
-=======
               uniqueUpcoming.map((reminder) => (
-                <ReminderRow key={reminder.id} reminder={reminder} timezone={timezone} />
->>>>>>> Stashed changes
+                <ReminderRow key={reminder.id} reminder={reminder} />
               ))
             )}
           </div>
@@ -131,13 +121,8 @@ export default function RemindersCard({ upcoming, recent, timezone, pushConfigur
                 Recently delivered
               </p>
               <div className="divide-y divide-slate-50">
-<<<<<<< Updated upstream
-                {recent.map((reminder) => (
-                  <ReminderRow key={reminder.id} reminder={reminder} />
-=======
                 {uniqueRecent.map((reminder) => (
-                  <ReminderRow key={reminder.id} reminder={reminder} timezone={timezone} />
->>>>>>> Stashed changes
+                  <ReminderRow key={reminder.id} reminder={reminder} />
                 ))}
               </div>
             </div>

@@ -1,41 +1,42 @@
+# .env
+# .env.example
+# .env.local
+# .env.*.local
+
+# /node_modules
+
+
 # Environment files and secrets.
 # The current .env.example also holds live values, so it stays ignored.
 # Sanitize it to placeholders before adding a !.env.example exception.
 .env*
-
 # Dependencies
 /node_modules/
-
 # Next.js and TypeScript build output
 /.next/
 /out/
 /build/
 /dist/
 *.tsbuildinfo
-
 # Caches
 .eslintcache
 .turbo/
 /coverage/
-
 # Deployment and tooling state
 .vercel/
 .firebase/
 firebase-debug.log*
 *firebase-adminsdk*.json
 service-account*.json
-
 # Supabase CLI local state
 supabase/.temp/
 supabase/.branches/
-
 # Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
 # OS files
 .DS_Store
 Thumbs.db

@@ -5,11 +5,9 @@
  * machine. Ticks land on each 10-second boundary, the instant every reminder
  * scheduled at that boundary becomes due; reminder times are computed from the
  * same clock, so there is no server-time race to wait out. Waiting an extra
- * couple of seconds would only add that delay to every notification. If no
- * Chrome process is running, the tick tells the route to use a native Windows
- * toast instead of FCM, since web push would otherwise be held until the
- * browser reopens. In production the same route is ticked by Supabase pg_cron
- * (see supabase/migrations) or Vercel Cron, so this script is only needed for
+ * couple of seconds would only add that delay to every notification. In
+ * production the same route is ticked by Supabase pg_cron (see
+ * supabase/migrations) or Vercel Cron, so this script is only needed for
  * local runs.
  *
  * Usage:
@@ -20,7 +18,6 @@
  * with CRON_TARGET_URL or pass a URL argument. CRON_SECRET is read from the
  * environment or .env and is never printed.
  */
-import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -44,7 +41,7 @@ function readSecret() {
   for (const line of contents.split(/\r?\n/)) {
     const match = line.match(/^\s*CRON_SECRET\s*=\s*(.*)$/)
     if (!match) continue
-    return match[1].trim().replace(/^(['"])(.*)\1$/, '$2')
+    return match[1].trim().replace(/^(['"])(.*)\\1$/, '$2')
   }
   return ''
 }
@@ -60,43 +57,12 @@ function pktTime(date = new Date()) {
   }).format(date)
 }
 
-/**
- * Web push cannot be displayed while the browser process is closed; FCM would
- * hold it until Chrome reopens. Report the state so the cron route can use the
- * native Windows toast fallback instead of queueing a late push.
- */
-function isBrowserRunning() {
-  if (process.platform !== 'win32') return true
-  try {
-    const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq chrome.exe', '/NH'], {
-      encoding: 'utf8',
-      windowsHide: true,
-      timeout: 3_000,
-    })
-    return /chrome\.exe/i.test(out)
-  } catch {
-    // Unknown state: keep FCM rather than risk a duplicate native notification.
-    return true
-  }
-}
-
-let lastBrowserRunning = null
-
 async function tick(secret) {
-  const browserRunning = isBrowserRunning()
-  if (browserRunning !== lastBrowserRunning) {
-    console.log(
-      `[scheduler] browser detected=${browserRunning} -> ${browserRunning ? 'FCM push' : 'native Windows toast fallback'}`
-    )
-    lastBrowserRunning = browserRunning
-  }
   try {
     const res = await fetch(TARGET_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${secret}`,
-        'X-Local-Scheduler': '1',
-        'X-Browser-Running': browserRunning ? '1' : '0',
       },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })

@@ -11,7 +11,6 @@ import {
   listDueReminders,
 } from '@/lib/supabase/api'
 import { isPushConfigured, missingPushServerEnvVars, sendPush } from '@/lib/reminders/send'
-import { nativeNotificationsSupported, showWindowsToast } from '@/lib/notifications/native'
 import { formatDate, formatDateTimeInTimeZone, reminderKindLabel } from '@/lib/utils'
 import { APP_TIMEZONE } from '@/lib/time'
 import type { Reminder } from '@/lib/types'
@@ -48,7 +47,7 @@ interface RunResult {
   late_by_ms?: number
   notification_triggered_at?: string
   push_ms?: number
-  delivery?: 'fcm' | 'native'
+  delivery?: 'fcm'
   error?: string
 }
 
@@ -72,14 +71,6 @@ async function handle(req: NextRequest) {
     // them so they are never sent twice.
     const stuckCutoff = new Date(Date.now() - STUCK_AFTER_MINUTES * 60_000).toISOString()
 
-    // Only the local Windows scheduler asks for native delivery when it cannot
-    // find a browser process. External triggers (production pg_cron/Vercel)
-    // never send these headers, so they keep using FCM.
-    const localNativeMode =
-      req.headers.get('x-local-scheduler') === '1' &&
-      req.headers.get('x-browser-running') === '0' &&
-      nativeNotificationsSupported()
-
     const queryAt = new Date()
     // The sweep only touches rows already in processing and the due query only
     // reads pending rows, so neither depends on the other. Running them together
@@ -100,7 +91,7 @@ async function handle(req: NextRequest) {
     let canceled = 0
     const results: RunResult[] = []
     for (const reminder of due) {
-      const willPush = reminder.channel !== 'dashboard' && !localNativeMode && isPushConfigured()
+      const willPush = reminder.channel !== 'dashboard' && isPushConfigured()
       // The token lookup is read-only and does not depend on the claim result,
       // so run it alongside the claim instead of after it.
       const [claimedRow, prefetchedTokens] = await Promise.all([
@@ -202,24 +193,7 @@ async function handle(req: NextRequest) {
           item.due_time ? ` at ${item.due_time.slice(0, 5)} (PKT)` : ' (PKT)'
         }`
 
-        if (localNativeMode) {
-          // No browser process: web push would be held until Chrome reopens, so
-          // deliver exactly once through the Windows toast fallback instead.
-          const startedMs = Date.now()
-          notificationTriggeredAt = new Date(startedMs).toISOString()
-          try {
-            await showWindowsToast(title, body)
-            pushMs = Date.now() - startedMs
-            delivery = 'native'
-            console.log(
-              `[cron] ${shortId} native toast notification_triggered_at=${notificationTriggeredAt} dispatch_ms=${pushMs} browser_running=0 (FCM skipped)`
-            )
-          } catch (err) {
-            status = 'failed'
-            lastError = err instanceof Error ? err.message : 'Native notification failed.'
-            console.error(`[cron] ${shortId} native toast failed: ${lastError}`)
-          }
-        } else if (!isPushConfigured()) {
+        if (!isPushConfigured()) {
           status = 'failed'
           lastError = `Firebase is not configured on the server (missing: ${missingPushServerEnvVars().join(', ')}).`
         } else {

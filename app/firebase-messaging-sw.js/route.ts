@@ -18,38 +18,50 @@ export async function GET() {
   })
 
   const body = `/* Life Admin Tracker FCM service worker (generated at request time). */
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
-firebase.initializeApp(${config});
-const messaging = firebase.messaging();
+// Take over promptly so a corrected worker replaces one that double-displayed
+// notifications instead of waiting for every tab to close.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
-messaging.onBackgroundMessage((payload) => {
-  const notification = payload.notification || {};
-  const data = payload.data || {};
-  self.registration.showNotification(notification.title || 'Life Admin Tracker', {
-    body: notification.body || '',
-    data,
-  });
-});
-
+// Registered before the Firebase SDK scripts so this listener runs first: the
+// SDK's click handler only focuses a tab, while this one opens the item.
 self.addEventListener('notificationclick', (event) => {
+  event.stopImmediatePropagation();
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || '/';
+
+  const fcmMessage = event.notification.data && event.notification.data.FCM_MSG;
+  const data = (fcmMessage && fcmMessage.data) || event.notification.data || {};
+  const target = data.url || '/';
+
   event.waitUntil(
-    clients
+    self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((windowClients) => {
         for (const client of windowClients) {
           if ('focus' in client) {
-            client.navigate(target);
+            if ('navigate' in client) client.navigate(target);
             return client.focus();
           }
         }
-        return clients.openWindow(target);
+        return self.clients.openWindow(target);
       })
   );
 });
+
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+
+firebase.initializeApp(${config});
+firebase.messaging();
+
+// Do NOT call self.registration.showNotification from onBackgroundMessage.
+// firebase-messaging-compat already displays every message that carries a
+// notification payload; calling showNotification here as well displayed each
+// reminder twice (the duplicate-notification bug). Messages sent by the cron
+// route also carry a stable tag (the reminder id), so if the same reminder is
+// delivered more than once to this browser it replaces the existing
+// notification instead of stacking another one.
 `
 
   return new NextResponse(body, {

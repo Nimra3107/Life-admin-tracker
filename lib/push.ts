@@ -4,6 +4,36 @@ import { firebaseConfig, isFirebaseConfigured, missingFirebaseEnvVars, VAPID_KEY
 export type PushRegistrationResult = { ok: true } | { ok: false; message: string }
 
 /**
+ * Firebase suppresses its automatic notification whenever an app tab counts as
+ * visible and hands the message to the page instead. Without an onMessage
+ * listener those reminders are dropped, so this displays them through the same
+ * service worker registration (and same reminder tag) used for background
+ * pushes. The SDK runs only one of the two paths, so a reminder is shown once.
+ */
+export async function registerForegroundMessageHandler(): Promise<() => void> {
+  if (!isFirebaseConfigured()) return () => {}
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window)) {
+    return () => {}
+  }
+  if (Notification.permission !== 'granted') return () => {}
+
+  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+  const { initializeApp, getApps } = await import('firebase/app')
+  const { getMessaging, onMessage } = await import('firebase/messaging')
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
+  return onMessage(getMessaging(app), (payload) => {
+    const notification = payload.notification ?? {}
+    if (!notification.title && !notification.body) return
+    const data = payload.data ?? {}
+    void registration.showNotification(notification.title ?? 'Life Admin Tracker', {
+      body: notification.body ?? '',
+      ...(data.reminderId ? { tag: `reminder-${data.reminderId}` } : {}),
+      data: { ...data, FCM_MSG: payload },
+    })
+  })
+}
+
+/**
  * Called only when the user opts into push notifications: asks for browser
  * permission, registers the FCM service worker, and stores the resulting token
  * against the signed-in user.
@@ -31,6 +61,14 @@ export async function enablePushNotifications(): Promise<PushRegistrationResult>
   try {
     const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
     console.log(`[push] service worker registered (scope: ${registration.scope})`)
+    // The worker is generated per request with no-store; force an update check so
+    // a corrected notification handler activates without waiting for the
+    // browser's periodic check. Failure here must not block token registration.
+    try {
+      await registration.update()
+    } catch {
+      // Keep the existing worker; the current registration is still usable.
+    }
     const { initializeApp, getApps } = await import('firebase/app')
     const { getMessaging, getToken } = await import('firebase/messaging')
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)

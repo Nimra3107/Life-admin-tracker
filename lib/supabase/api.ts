@@ -340,6 +340,28 @@ export async function upsertDeviceToken(token: string, userId: string, fcmToken:
     },
     prefer: 'resolution=merge-duplicates',
   })
+
+  // A browser can accumulate several still-valid FCM tokens (re-permissioning,
+  // token rotation, cleared profiles). Sending to all of them pushes the same
+  // reminder once per token. Keep only the registration just refreshed so each
+  // reminder reaches this user once; a different device takes over when it
+  // registers next. Cleanup must never fail an otherwise successful signup.
+  try {
+    const superseded = (await restCall('PATCH', DEVICE_TOKENS_TABLE, token, {
+      params: {
+        user_id: `eq.${userId}`,
+        token: `neq.${fcmToken}`,
+        disabled_at: 'is.null',
+      },
+      json: { disabled_at: new Date().toISOString() },
+      prefer: 'return=representation',
+    })) as unknown[]
+    console.log(
+      `[push] token registered for user ${userId}; disabled ${superseded.length} superseded token(s)`
+    )
+  } catch (err) {
+    console.error('[push] could not disable superseded device tokens', err)
+  }
 }
 
 export async function listActiveDeviceTokens(userId: string): Promise<string[]> {
@@ -418,12 +440,12 @@ export async function hasAnyReminders(token: string, userId: string): Promise<bo
   return rows.length > 0
 }
 
-export async function listDueReminders(limit = 50): Promise<unknown[]> {
+export async function listDueReminders(limit = 50, now = new Date()): Promise<unknown[]> {
   return (await serviceRestCall('GET', REMINDERS_TABLE, {
     params: {
       select: REMINDER_ITEM_SELECT,
       status: 'eq.pending',
-      scheduled_for: `lte.${new Date().toISOString()}`,
+      scheduled_for: `lte.${now.toISOString()}`,
       order: 'scheduled_for.asc',
       limit: String(limit),
     },

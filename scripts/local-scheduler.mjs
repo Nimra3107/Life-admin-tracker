@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * Local reminder scheduler: ticks /api/cron/reminders once a minute so push
- * reminders fire on time while running the app on this machine. In production
- * the same route is ticked by Supabase pg_cron (see supabase/migrations) or by
- * the daily Vercel Cron fallback, so this script is only needed for local runs.
+ * Local reminder scheduler: ticks /api/cron/reminders every 10 seconds so push
+ * reminders fire close to their scheduled instant while running the app on this
+ * machine. Ticks land on each 10-second boundary, the instant every reminder
+ * scheduled at that boundary becomes due; reminder times are computed from the
+ * same clock, so there is no server-time race to wait out. Waiting an extra
+ * couple of seconds would only add that delay to every notification. In
+ * production the same route is ticked by Supabase pg_cron (see
+ * supabase/migrations) or Vercel Cron, so this script is only needed for
+ * local runs.
  *
  * Usage:
- *   npm run scheduler:local                    tick every minute until stopped
+ *   npm run scheduler:local                    tick every 10 seconds until stopped
  *   node scripts/local-scheduler.mjs --once    single tick, then exit
  *
  * Target URL defaults to http://localhost:3000/api/cron/reminders; override
@@ -20,7 +25,7 @@ const ONCE = process.argv.includes('--once')
 const argUrl = process.argv.slice(2).find((a) => a.startsWith('http'))
 const TARGET_URL =
   argUrl ?? process.env.CRON_TARGET_URL ?? 'http://localhost:3000/api/cron/reminders'
-const INTERVAL_MS = 60_000
+const INTERVAL_MS = 10_000
 const REQUEST_TIMEOUT_MS = 25_000
 const TIMEZONE = 'Asia/Karachi'
 
@@ -36,26 +41,29 @@ function readSecret() {
   for (const line of contents.split(/\r?\n/)) {
     const match = line.match(/^\s*CRON_SECRET\s*=\s*(.*)$/)
     if (!match) continue
-    return match[1].trim().replace(/^(['"])(.*)\1$/, '$2')
+    return match[1].trim().replace(/^(['"])(.*)\\1$/, '$2')
   }
   return ''
 }
 
-function pktTime() {
+function pktTime(date = new Date()) {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    fractionalSecondDigits: 3,
     hour12: false,
-  }).format(new Date())
+  }).format(date)
 }
 
 async function tick(secret) {
   try {
     const res = await fetch(TARGET_URL, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${secret}` },
+      headers: {
+        Authorization: `Bearer ${secret}`,
+      },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
     const text = await res.text()
@@ -66,11 +74,25 @@ async function tick(secret) {
       return false
     }
     let summary = text
+    let results = []
     try {
       const json = JSON.parse(text)
-      summary = `processed=${json.processed} sent=${json.sent} failed=${json.failed}`
+      summary = `processed=${json.processed} sent=${json.sent} failed=${json.failed} skipped=${json.skipped ?? 0} canceled=${json.canceled ?? 0}`
+      results = Array.isArray(json.results) ? json.results : []
     } catch {}
     console.log(`[scheduler] ${pktTime()} PKT tick ok: ${summary}`)
+    // Mirror per-reminder timing here so scheduled time, trigger time and
+    // lateness are visible even when the dev-server console is not being watched.
+    for (const r of results) {
+      const error = r.error ? ` error=${String(r.error).replace(/\s+/g, ' ').slice(0, 120)}` : ''
+      console.log(
+        `[scheduler]   reminder ${String(r.id).slice(0, 8)} ${r.kind} status=${r.status} scheduled_for=${r.scheduled_for}` +
+          `${r.notification_triggered_at ? ` notification_triggered_at=${r.notification_triggered_at}` : ''}` +
+          `${typeof r.late_by_ms === 'number' ? ` late_by_ms=${r.late_by_ms}` : ''}` +
+          `${typeof r.push_ms === 'number' ? ` push_ms=${r.push_ms}` : ''}` +
+          `${r.delivery ? ` delivery=${r.delivery}` : ''}${error}`
+      )
+    }
     return true
   } catch (err) {
     console.error(
@@ -87,7 +109,7 @@ if (!secret) {
 }
 
 console.log(
-  `[scheduler] target: ${TARGET_URL} (every 60s) — CRON_SECRET loaded (${secret.length} chars)`
+  `[scheduler] target: ${TARGET_URL} (every 10s) — CRON_SECRET loaded (${secret.length} chars)`
 )
 
 if (ONCE) {
@@ -100,12 +122,30 @@ process.on('SIGINT', () => {
   process.exit(0)
 })
 
+function nextTickAt(nowMs = Date.now()) {
+  const boundary = Math.floor(nowMs / INTERVAL_MS) * INTERVAL_MS
+  return boundary >= nowMs ? boundary : boundary + INTERVAL_MS
+}
+
 function schedule() {
-  const delay = INTERVAL_MS - (Date.now() % INTERVAL_MS)
+  const now = Date.now()
+  const target = nextTickAt(now)
+  const delay = target - now
   setTimeout(async () => {
+    const startedAt = Date.now()
+    const driftMs = startedAt - target
     await tick(secret)
+    const elapsedMs = Date.now() - startedAt
+    console.log(
+      `[scheduler] tick complete target=${new Date(target).toISOString()} actual=${new Date(startedAt).toISOString()} drift=${driftMs}ms request=${elapsedMs}ms${driftMs > 5_000 ? ' (late tick — host may have been asleep/busy)' : ''}`
+    )
     schedule()
   }, delay)
 }
 
+console.log(`[scheduler] next tick at ${pktTime(new Date(nextTickAt()))} PKT (10s boundary)`)
+// Catch anything that came due while this process was not running, then align
+// to the 10-second boundary. Overlap with an external trigger is safe: the cron
+// route claims each reminder atomically.
+await tick(secret)
 schedule()

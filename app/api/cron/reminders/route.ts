@@ -47,7 +47,7 @@ interface RunResult {
   late_by_ms?: number
   notification_triggered_at?: string
   push_ms?: number
-  delivery?: 'fcm'
+  delivery?: 'fcm' | 'native'
   error?: string
 }
 

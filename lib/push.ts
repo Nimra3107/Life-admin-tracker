@@ -4,6 +4,27 @@ import { firebaseConfig, isFirebaseConfigured, missingFirebaseEnvVars, VAPID_KEY
 export type PushRegistrationResult = { ok: true } | { ok: false; message: string }
 
 /**
+ * register() resolves while the worker can still be in "installing"; calling
+ * getToken()/subscribe on it then fails with "no active Service Worker".
+ * serviceWorker.ready resolves only once a worker is actually active.
+ */
+async function registerActiveServiceWorker(): Promise<ServiceWorkerRegistration> {
+  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+  console.log(`[push] service worker registered (scope: ${registration.scope})`)
+  // The worker is generated per request with no-store; force an update check so
+  // a corrected notification handler activates without waiting for the
+  // browser's periodic check. Failure here must not block token registration.
+  try {
+    await registration.update()
+  } catch {
+    // Keep the existing worker; the current registration is still usable.
+  }
+  const activeRegistration = await navigator.serviceWorker.ready
+  console.log(`[push] service worker active (state: ${activeRegistration.active?.state})`)
+  return activeRegistration
+}
+
+/**
  * Firebase suppresses its automatic notification whenever an app tab counts as
  * visible and hands the message to the page instead. Without an onMessage
  * listener those reminders are dropped, so this displays them through the same
@@ -17,7 +38,7 @@ export async function registerForegroundMessageHandler(): Promise<() => void> {
   }
   if (Notification.permission !== 'granted') return () => {}
 
-  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+  const registration = await registerActiveServiceWorker()
   const { initializeApp, getApps } = await import('firebase/app')
   const { getMessaging, onMessage } = await import('firebase/messaging')
   const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
@@ -33,12 +54,24 @@ export async function registerForegroundMessageHandler(): Promise<() => void> {
   })
 }
 
+let enablePushInFlight: Promise<PushRegistrationResult> | null = null
+
 /**
  * Called only when the user opts into push notifications: asks for browser
  * permission, registers the FCM service worker, and stores the resulting token
- * against the signed-in user.
+ * against the signed-in user. Concurrent callers (preference change plus a
+ * silent token refresh, or two tabs) share one registration run; letting them
+ * race used to end with zero active tokens.
  */
-export async function enablePushNotifications(): Promise<PushRegistrationResult> {
+export function enablePushNotifications(): Promise<PushRegistrationResult> {
+  if (enablePushInFlight) return enablePushInFlight
+  enablePushInFlight = doEnablePushNotifications().finally(() => {
+    enablePushInFlight = null
+  })
+  return enablePushInFlight
+}
+
+async function doEnablePushNotifications(): Promise<PushRegistrationResult> {
   if (!isFirebaseConfigured()) {
     console.error(`[push] not configured — missing env: ${missingFirebaseEnvVars().join(', ')}`)
     return {
@@ -59,16 +92,7 @@ export async function enablePushNotifications(): Promise<PushRegistrationResult>
   }
 
   try {
-    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
-    console.log(`[push] service worker registered (scope: ${registration.scope})`)
-    // The worker is generated per request with no-store; force an update check so
-    // a corrected notification handler activates without waiting for the
-    // browser's periodic check. Failure here must not block token registration.
-    try {
-      await registration.update()
-    } catch {
-      // Keep the existing worker; the current registration is still usable.
-    }
+    const registration = await registerActiveServiceWorker()
     const { initializeApp, getApps } = await import('firebase/app')
     const { getMessaging, getToken } = await import('firebase/messaging')
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)

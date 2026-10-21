@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 /**
  * Local reminder scheduler: ticks /api/cron/reminders every 10 seconds so push
- * reminders fire close to their scheduled instant while running the app on this
- * machine. Ticks land on each 10-second boundary, the instant every reminder
- * scheduled at that boundary becomes due; reminder times are computed from the
- * same clock, so there is no server-time race to wait out. Waiting an extra
- * couple of seconds would only add that delay to every notification. In
+ * reminders fire close to their scheduled instant. Optional since the dev
+ * server now ticks the same route itself (instrumentation.ts) — run this only
+ * to target a different URL (CRON_TARGET_URL) or to watch the tick log in a
+ * separate terminal. Ticks land on each 10-second boundary, the instant every
+ * reminder scheduled at that boundary becomes due; reminder times are computed
+ * from the same clock, so there is no server-time race to wait out. Waiting an
+ * extra couple of seconds would only add that delay to every notification. In
  * production the same route is ticked by Supabase pg_cron (see
- * supabase/migrations) or Vercel Cron, so this script is only needed for
- * local runs.
+ * supabase/enable-production-cron.sql) or Vercel Cron, so this script is only
+ * needed for local runs.
  *
  * Usage:
  *   npm run scheduler:local                    tick every 10 seconds until stopped
@@ -41,7 +43,7 @@ function readSecret() {
   for (const line of contents.split(/\r?\n/)) {
     const match = line.match(/^\s*CRON_SECRET\s*=\s*(.*)$/)
     if (!match) continue
-    return match[1].trim().replace(/^(['"])(.*)\\1$/, '$2')
+    return match[1].trim().replace(/^(['"])(.*)\1$/, '$2')
   }
   return ''
 }

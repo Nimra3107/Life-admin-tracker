@@ -127,20 +127,8 @@ notify pgrst, 'reload schema';
 
 -- 8. Production trigger: run the processor every 10 seconds so reminders fire
 --    at their scheduled instant. pg_cron 1.5+ supports second intervals
---    ('10 seconds'); Vercel Cron cannot run more often than once a minute, so
---    it is only a fallback. Uncomment, replace the URL and secret, and run this
---    AFTER deploying the app. Local runs use `npm run scheduler:local`, which
---    ticks at the same 10-second cadence.
---
--- create extension if not exists pg_cron;
--- create extension if not exists pg_net;
--- select cron.schedule(
---   'life-admin-reminders',
---   '10 seconds',
---   $$
---   select net.http_get(
---     url := 'https://YOUR-APP-URL/api/cron/reminders',
---     headers := jsonb_build_object('Authorization', 'Bearer YOUR_CRON_SECRET')
---   );
---   $$
--- );
+--    ('10 seconds'); Vercel Cron cannot run more often than once a day on the
+--    Hobby plan, so it is only a fallback. See supabase/enable-production-cron.sql
+--    (fill in the deployed URL and CRON_SECRET, then run it in the Supabase SQL
+--    editor AFTER deploying the app). Local runs need nothing: the dev server
+--    ticks the same route itself (instrumentation.ts).

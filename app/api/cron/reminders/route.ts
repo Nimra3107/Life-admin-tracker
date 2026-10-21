@@ -185,7 +185,7 @@ async function handle(req: NextRequest) {
       let lastError: string | null = null
       let notificationTriggeredAt: string | undefined
       let pushMs: number | undefined
-      let delivery: 'fcm' | 'native' | undefined
+      let delivery: 'fcm' | undefined
 
       if (needsPush) {
         const title = item.title || claimed.title

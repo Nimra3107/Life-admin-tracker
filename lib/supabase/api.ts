@@ -327,7 +327,15 @@ async function serviceRestCall(
   return restCall(method, table, SUPABASE_SERVICE_KEY, { apiKey: SUPABASE_SERVICE_KEY, ...opts })
 }
 
-/** Register (or re-activate) an FCM token for the signed-in user. */
+/**
+ * Register (or re-activate) an FCM token for the signed-in user. The upsert is
+ * idempotent: re-registering the same token just refreshes last_seen_at. It
+ * deliberately does NOT disable the user's other tokens — concurrent
+ * registrations (preference change + silent token refresh, two tabs) used to
+ * disable each other and leave the user with zero active tokens. Duplicate
+ * display is already prevented at send time by selecting a single recipient
+ * and by the notification tag in the browser.
+ */
 export async function upsertDeviceToken(token: string, userId: string, fcmToken: string): Promise<void> {
   await restCall('POST', DEVICE_TOKENS_TABLE, token, {
     params: { on_conflict: 'token' },
@@ -340,33 +348,25 @@ export async function upsertDeviceToken(token: string, userId: string, fcmToken:
     },
     prefer: 'resolution=merge-duplicates',
   })
-
-  // A browser can accumulate several still-valid FCM tokens (re-permissioning,
-  // token rotation, cleared profiles). Sending to all of them pushes the same
-  // reminder once per token. Keep only the registration just refreshed so each
-  // reminder reaches this user once; a different device takes over when it
-  // registers next. Cleanup must never fail an otherwise successful signup.
-  try {
-    const superseded = (await restCall('PATCH', DEVICE_TOKENS_TABLE, token, {
-      params: {
-        user_id: `eq.${userId}`,
-        token: `neq.${fcmToken}`,
-        disabled_at: 'is.null',
-      },
-      json: { disabled_at: new Date().toISOString() },
-      prefer: 'return=representation',
-    })) as unknown[]
-    console.log(
-      `[push] token registered for user ${userId}; disabled ${superseded.length} superseded token(s)`
-    )
-  } catch (err) {
-    console.error('[push] could not disable superseded device tokens', err)
-  }
 }
 
+/**
+ * A browser can accumulate several still-valid FCM tokens (re-permissioning,
+ * token rotation, cleared profiles); pushing to all of them would notify the
+ * same browser once per token. Only the most recently seen active token is
+ * used, so each reminder reaches the user once; a different device takes over
+ * by registering (and being seen) later. Dead tokens are disabled by the cron
+ * route when FCM rejects them.
+ */
 export async function listActiveDeviceTokens(userId: string): Promise<string[]> {
   const rows = (await serviceRestCall('GET', DEVICE_TOKENS_TABLE, {
-    params: { select: 'token', user_id: `eq.${userId}`, disabled_at: 'is.null' },
+    params: {
+      select: 'token',
+      user_id: `eq.${userId}`,
+      disabled_at: 'is.null',
+      order: 'last_seen_at.desc,created_at.desc',
+      limit: '1',
+    },
   })) as { token: string }[]
   return rows.map((row) => row.token)
 }

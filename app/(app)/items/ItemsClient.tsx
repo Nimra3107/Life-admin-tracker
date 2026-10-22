@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createBrowserApi } from '@/lib/api/client'
 import { PriorityBadge, StatusBadge } from '@/components/Badges'
-import { formatDateTime, isOverdue, PRIORITY_ORDER } from '@/lib/utils'
+import ExportMenu from '@/components/ExportMenu'
+import { formatDateTime, isOverdue, matchesItemFilters, PRIORITY_ORDER } from '@/lib/utils'
 import type { LifeAdminItem, Category, Priority, Status } from '@/lib/types'
 import {
   Plus,
@@ -40,15 +41,14 @@ export default function ItemsClient({ initialItems, categories }: Props) {
   const [successMsg, setSuccessMsg] = useState('')
 
   // Filter + sort
+  const activeFilters = {
+    search,
+    categoryId: filterCategory,
+    status: filterStatus,
+    priority: filterPriority,
+  }
   const filtered = items
-    .filter((item) => {
-      const q = search.toLowerCase()
-      if (q && !item.title.toLowerCase().includes(q) && !(item.description ?? '').toLowerCase().includes(q)) return false
-      if (filterCategory && item.category_id !== filterCategory) return false
-      if (filterStatus && item.status !== filterStatus) return false
-      if (filterPriority && item.priority !== filterPriority) return false
-      return true
-    })
+    .filter((item) => matchesItemFilters(item, activeFilters))
     .sort((a, b) => {
       let cmp = 0
       if (sortKey === 'due_date') {
@@ -88,13 +88,16 @@ export default function ItemsClient({ initialItems, categories }: Props) {
           <h1 className="text-2xl font-bold text-slate-900">Items</h1>
           <p className="text-slate-500 text-sm mt-1">{items.length} total item{items.length !== 1 ? 's' : ''}</p>
         </div>
-        <Link
-          href="/items/new"
-          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Item
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportMenu filters={activeFilters} />
+          <Link
+            href="/items/new"
+            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Item
+          </Link>
+        </div>
       </div>
 
       {successMsg && (

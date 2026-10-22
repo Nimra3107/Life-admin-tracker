@@ -1,5 +1,5 @@
 import { APP_TIMEZONE } from './time'
-import { type NotificationPreference, type Priority, type ReminderStatus, type Status } from './types'
+import { type LifeAdminItem, type NotificationPreference, type Priority, type ReminderStatus, type Status } from './types'
 
 export const PRIORITY_ORDER: Record<Priority, number> = {
   Urgent: 4,
@@ -73,6 +73,27 @@ export function reminderKindLabel(kind: string): string {
     return `${hours} hour${hours === 1 ? '' : 's'} before`
   }
   return `${value} minute${value === 1 ? '' : 's'} before`
+}
+
+/** Values of the items list Search & Filter bar, shared with the export. */
+export interface ItemFilters {
+  search: string
+  categoryId: string
+  status: Status | ''
+  priority: Priority | ''
+}
+
+/**
+ * The single predicate behind the items list search/filter bar. The Export Data
+ * dropdown applies it too, so an export always matches what the user sees.
+ */
+export function matchesItemFilters(item: LifeAdminItem, filters: ItemFilters): boolean {
+  const q = filters.search.toLowerCase()
+  if (q && !item.title.toLowerCase().includes(q) && !(item.description ?? '').toLowerCase().includes(q)) return false
+  if (filters.categoryId && item.category_id !== filters.categoryId) return false
+  if (filters.status && item.status !== filters.status) return false
+  if (filters.priority && item.priority !== filters.priority) return false
+  return true
 }
 
 /** Format a Postgres time value ("14:30:00") as "14:30". */

@@ -63,17 +63,35 @@ function ReminderRow({ reminder }: { reminder: Reminder }) {
 export default function RemindersCard({ upcoming, recent, pushConfigured, pushSetupMissing, errorMessage }: Props) {
   // Upcoming and recent are disjoint statuses in the API; filter by reminder id
   // anyway so a race/stale response can never render the same reminder twice.
-  const seen = new Set<string>()
-  const uniqueUpcoming = upcoming.filter((reminder) => {
-    if (seen.has(reminder.id)) return false
-    seen.add(reminder.id)
-    return true
-  })
-  const uniqueRecent = recent.filter((reminder) => {
-    if (seen.has(reminder.id)) return false
-    seen.add(reminder.id)
-    return true
-  })
+  // const seen = new Set<string>()
+  // const uniqueUpcoming = upcoming.filter((reminder) => {
+  //   if (seen.has(reminder.id)) return false
+  //   seen.add(reminder.id)
+  //   return true
+  // })
+  // const uniqueRecent = recent.filter((reminder) => {
+  //   if (seen.has(reminder.id)) return false
+  //   seen.add(reminder.id)
+  //   return true
+  // })
+
+  
+const seen = new Set<string>()
+
+const uniqueUpcoming = upcoming.filter((reminder) => {
+  if (reminder.status === 'failed') return false
+  if (seen.has(reminder.id)) return false
+  seen.add(reminder.id)
+  return true
+})
+
+const uniqueRecent = recent.filter((reminder) => {
+  if (reminder.status === 'failed') return false
+  if (seen.has(reminder.id)) return false
+  seen.add(reminder.id)
+  return true
+})
+ 
   const pushNeedsSetup = !pushConfigured && uniqueUpcoming.some((r) => r.channel !== 'dashboard')
 
   return (

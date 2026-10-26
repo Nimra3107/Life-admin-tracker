@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { ApiError, authCall, errorResponse, getRouteUser } from '@/lib/supabase/api'
+import { ApiError, errorResponse, getRouteUser } from '@/lib/db/api'
+import { hashPassword } from '@/lib/auth/passwords'
+import { setUserPassword } from '@/lib/auth/users'
+import { revokeOtherSessions } from '@/lib/auth/sessions'
 import { readJson } from '@/lib/api/schemas'
 
 export async function PUT(req: NextRequest) {
@@ -7,8 +10,10 @@ export async function PUT(req: NextRequest) {
     const user = await getRouteUser(req)
     const body = await readJson(req)
     const password = typeof body.password === 'string' ? body.password : ''
-    if (!password) throw new ApiError(422, 'Password is required.')
-    await authCall('PUT', 'user', { token: user.token, json: { password } })
+    if (password.length < 6) throw new ApiError(422, 'Password must be at least 6 characters.')
+    await setUserPassword(user.id, await hashPassword(password))
+    // The caller's current session keeps working; every other device is signed out.
+    await revokeOtherSessions(user.id, user.sessionId)
     return NextResponse.json({ ok: true })
   } catch (err) {
     return errorResponse(err)

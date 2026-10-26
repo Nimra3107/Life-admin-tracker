@@ -14,7 +14,7 @@ interface Props {
 }
 
 /**
- * Reminder offsets must always be plain integers in the payload (Supabase's
+ * Reminder offsets must always be plain integers in the payload (PostgreSQL's
  * integer[] column). Values loaded from the API may be numeric strings if they
  * were stored by an older client, so coerce them and drop anything invalid.
  */

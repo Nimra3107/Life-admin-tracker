@@ -1,5 +1,5 @@
 import { type NextRequest } from 'next/server'
-import { ApiError } from '@/lib/supabase/api'
+import { ApiError } from '@/lib/db/api'
 import type { ItemInput } from './core'
 import type { NotificationPreference, Priority, Status } from '@/lib/types'
 
@@ -17,7 +17,7 @@ function bad(message: string): never {
 /**
  * One entry of a reminder offset list. Plain JSON numbers pass through; numeric
  * strings ("60", " 30 ") are converted to numbers so clients that serialize
- * inputs as text still produce values for Supabase's integer[] columns.
+ * inputs as text still produce values for the PostgreSQL integer[] columns.
  * Decimals, negatives, out-of-range, empty and non-numeric values are rejected.
  */
 function parseWholeNumberInRange(value: unknown, min: number, max: number, message: string): number {
@@ -158,9 +158,13 @@ export function parseCategoryName(body: Record<string, unknown>): string {
   return name
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export function parseEmailPassword(body: Record<string, unknown>): { email: string; password: string } {
   const email = typeof body.email === 'string' ? body.email.trim() : ''
   const password = typeof body.password === 'string' ? body.password : ''
   if (!email || !password) bad('Email and password are required.')
+  if (!EMAIL_RE.test(email)) bad('Please provide a valid email address.')
+  if (password.length < 6) bad('Password must be at least 6 characters.')
   return { email, password }
 }

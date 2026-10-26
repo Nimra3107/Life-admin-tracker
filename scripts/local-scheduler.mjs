@@ -8,9 +8,9 @@
  * reminder scheduled at that boundary becomes due; reminder times are computed
  * from the same clock, so there is no server-time race to wait out. Waiting an
  * extra couple of seconds would only add that delay to every notification. In
- * production the same route is ticked by Supabase pg_cron (see
- * supabase/enable-production-cron.sql) or Vercel Cron, so this script is only
- * needed for local runs.
+ * production the same route must be ticked by an external scheduler (the old
+ * Supabase pg_cron trigger in supabase/ no longer applies to the self-hosted
+ * PostgreSQL), so this script is what keeps reminders firing locally.
  *
  * Usage:
  *   npm run scheduler:local                    tick every 10 seconds until stopped

@@ -2,7 +2,7 @@
  * The single time zone used everywhere in this app: Pakistan Standard Time
  * (UTC+05:00, no DST). Due dates/times are entered, stored and displayed as
  * PKT wall-clock values; reminder instants are converted from PKT to UTC here
- * and only stored as UTC (scheduled_for) in Supabase.
+ * and only stored as UTC (scheduled_for) in PostgreSQL.
  */
 export const APP_TIMEZONE = 'Asia/Karachi'
 

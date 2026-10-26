@@ -4,9 +4,10 @@
  * reminders firing on time — the standalone `npm run scheduler:local` was a
  * second process that had to be restarted by hand after every dev-server
  * restart, and forgetting it left due reminders pending and undelivered.
- * Production never runs this loop: the deployed app is ticked by Supabase
- * pg_cron (supabase/enable-production-cron.sql) with the daily Vercel Cron in
- * vercel.json as a fallback.
+ * Production never runs this loop: the deployed app must be ticked by an
+ * external scheduler calling /api/cron/reminders with the CRON_SECRET bearer
+ * token (the old Supabase pg_cron trigger no longer applies to a self-hosted
+ * PostgreSQL — see db/migrations/001_init.sql for the local schema).
  */
 
 const TICK_MS = 10_000

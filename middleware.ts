@@ -41,7 +41,7 @@ export async function middleware(request: NextRequest) {
     // otherwise the API is unreachable: carry on with the current token
   }
 
-  // Ask /api/auth/me who this is (it verifies the token with Supabase).
+  // Ask /api/auth/me who this is (it verifies the token against auth_sessions).
   let user: AuthUser | null = null
   if (session) {
     const { data, error } = await authApi.me(session.access_token, origin)

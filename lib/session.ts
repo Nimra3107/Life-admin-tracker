@@ -1,7 +1,8 @@
 /**
  * Session handling shared by the browser, server components and middleware.
- * The session (issued by the /api/auth routes from Supabase Auth) lives in
- * three cookies so that middleware and server pages can read it.
+ * The session (issued by the /api/auth routes, backed by local PostgreSQL
+ * auth_sessions) lives in three cookies so that middleware and server pages
+ * can read it.
  */
 export const ACCESS_COOKIE = 'la_access_token'
 export const REFRESH_COOKIE = 'la_refresh_token'

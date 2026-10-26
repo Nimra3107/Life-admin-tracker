@@ -5,7 +5,7 @@ import {
   getItem,
   getRouteUser,
   updateItem,
-} from '@/lib/supabase/api'
+} from '@/lib/db/api'
 import { parseItemInput, parsePathId, readJson } from '@/lib/api/schemas'
 import { clearRemindersForDeletedItem, refreshRemindersForSavedItem } from '@/lib/reminders/schedule'
 import type { LifeAdminItem } from '@/lib/types'
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: Context) {
     const { id } = await params
     parsePathId(id, 'item id')
     const user = await getRouteUser(req)
-    const item = await getItem(user.token, user.id, id)
+    const item = await getItem(user.id, id)
     return NextResponse.json(item)
   } catch (err) {
     return errorResponse(err)
@@ -32,8 +32,7 @@ export async function PUT(req: NextRequest, { params }: Context) {
     parsePathId(id, 'item id')
     const user = await getRouteUser(req)
     const input = parseItemInput(await readJson(req))
-    const row = { ...input, updated_at: new Date().toISOString() }
-    const item = (await updateItem(user.token, user.id, id, row)) as LifeAdminItem
+    const item = (await updateItem(user.id, id, { ...input, user_id: user.id })) as LifeAdminItem
     await refreshRemindersForSavedItem(user, item)
     return NextResponse.json(item)
   } catch (err) {
@@ -48,7 +47,7 @@ export async function DELETE(req: NextRequest, { params }: Context) {
     const user = await getRouteUser(req)
     // Fast-path cleanup; the reminders FK also cascades on item delete.
     await clearRemindersForDeletedItem(user, id)
-    await deleteItem(user.token, user.id, id)
+    await deleteItem(user.id, id)
     return new NextResponse(null, { status: 204 })
   } catch (err) {
     return errorResponse(err)

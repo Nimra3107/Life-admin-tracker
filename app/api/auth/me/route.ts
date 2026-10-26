@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { errorResponse, getRouteUser } from '@/lib/supabase/api'
+import { errorResponse, getRouteUser } from '@/lib/db/api'
 
 export async function GET(req: NextRequest) {
   try {

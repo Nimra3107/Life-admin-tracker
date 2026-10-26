@@ -6,27 +6,25 @@ import {
   errorResponse,
   failStuckReminders,
   finishReminder,
-  hasServiceRoleKey,
   listActiveDeviceTokens,
   listDueReminders,
-} from '@/lib/supabase/api'
+} from '@/lib/db/api'
 import { isPushConfigured, missingPushServerEnvVars, sendPush } from '@/lib/reminders/send'
 import { formatDate, formatDateTimeInTimeZone, reminderKindLabel } from '@/lib/utils'
 import { APP_TIMEZONE } from '@/lib/time'
 import type { Reminder } from '@/lib/types'
 
 /**
- * Processes due reminders. Triggered by Supabase Cron (pg_cron + pg_net) every
- * 10 seconds, or by the daily Vercel Cron fallback (vercel.json; the Hobby plan
- * rejects sub-daily schedules, so pg_cron is the reliable production trigger).
- * Locally, scripts/local-scheduler.mjs (npm run scheduler:local) ticks every
- * 10 seconds after each boundary. Those triggers, not this route, bound how
- * close to the scheduled second delivery can start; FCM/browser delivery is
- * best-effort after the push is accepted. Protected by the CRON_SECRET bearer
- * token. Runs with the service role, and each reminder is claimed atomically
- * before delivery so overlapping runs can never send the same notification
- * twice. Reminders that missed their slot by more than a grace window are
- * marked failed instead of sent very late.
+ * Processes due reminders. Locally the dev server ticks this route every 10
+ * seconds (instrumentation.ts), or `npm run scheduler:local` does it from a
+ * separate process. Those triggers, not this route, bound how close to the
+ * scheduled second delivery can start; FCM/browser delivery is best-effort
+ * after the push is accepted. Protected by the CRON_SECRET bearer token; the
+ * database role in DATABASE_URL only has row privileges (the least-privilege
+ * replacement for the old Supabase service-role key, which bypassed RLS).
+ * Reminders that missed their slot by more than a grace window are marked
+ * failed instead of sent very late. Each reminder is claimed atomically before
+ * delivery, so overlapping runs can never send the same notification twice.
  */
 
 export const dynamic = 'force-dynamic'
@@ -63,9 +61,6 @@ async function handle(req: NextRequest) {
   const runStart = Date.now()
   try {
     assertAuthorized(req)
-    if (!hasServiceRoleKey()) {
-      throw new ApiError(500, 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server.')
-    }
 
     // A previous run that crashed mid-delivery leaves rows in processing; fail
     // them so they are never sent twice.

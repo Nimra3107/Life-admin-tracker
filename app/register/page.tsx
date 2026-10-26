@@ -40,7 +40,7 @@ export default function RegisterPage() {
       return
     }
 
-    // Step 2: Immediately sign in (works when email confirmation is disabled in Supabase)
+    // Step 2: Immediately sign in (local registration issues a session right away)
     const { error: signInError } = await signIn(email, password)
 
     setLoading(false)

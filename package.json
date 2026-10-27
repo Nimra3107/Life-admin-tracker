@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "scheduler:local": "node scripts/local-scheduler.mjs",
+    "seed:test": "node --no-warnings scripts/seed-test-data.mjs",
+    "seed:test:apply": "node --no-warnings scripts/seed-test-data.mjs --apply",
     "lint": "eslint"
   },
   "dependencies": {

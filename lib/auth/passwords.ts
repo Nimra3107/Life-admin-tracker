@@ -1,7 +1,18 @@
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
-import { promisify } from 'node:util'
+import { randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from 'node:crypto'
 
-const scryptAsync = promisify(scrypt)
+function scryptAsync(
+  password: string,
+  salt: Buffer,
+  keyLength: number,
+  options: ScryptOptions
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, keyLength, options, (error, derivedKey) => {
+      if (error) reject(error)
+      else resolve(derivedKey)
+    })
+  })
+}
 
 /** scrypt cost parameters; 16384*8 blocks ≈ 16 MB, well within Node's default maxmem. */
 const SCRYPT_N = 16384

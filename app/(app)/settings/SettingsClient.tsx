@@ -10,15 +10,11 @@ interface Props {
 }
 
 export default function SettingsClient({ userEmail, userId }: Props) {
-  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
   const [pwError, setPwError] = useState('')
   const [pwSuccess, setPwSuccess] = useState('')
-
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleteInput, setDeleteInput] = useState('')
 
   async function handlePasswordChange(e: React.FormEvent) {
     e.preventDefault()
@@ -34,7 +30,6 @@ export default function SettingsClient({ userEmail, userId }: Props) {
 
     if (error) { setPwError(error.message); return }
     setPwSuccess('Password updated successfully!')
-    setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
   }
